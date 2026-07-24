@@ -15,7 +15,7 @@ int main(void) {
     ft6336_init();
     lvgl_port_register_touch();
 
-    ws2812_init(pio1, 0, PIN_LED_DATA);
+    ws2812_init(pio1, (uint)pio_claim_unused_sm(pio1, true), PIN_LED_DATA);
     ws2812_set_brightness(40);
     ws2812_clear();
     ws2812_show();

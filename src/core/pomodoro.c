@@ -1,14 +1,5 @@
 #include "pomodoro.h"
 
-static uint32_t phase_len_ms(const pomodoro_t *p) {
-    switch (p->state) {
-        case PM_FOCUS:       return (uint32_t)p->cfg.focus_min * 60000u;
-        case PM_BREAK_SHORT: return (uint32_t)p->cfg.short_min * 60000u;
-        case PM_BREAK_LONG:  return (uint32_t)p->cfg.long_min  * 60000u;
-        default:             return 0;
-    }
-}
-
 void pomodoro_init(pomodoro_t *p, pm_config_t cfg) {
     pomodoro_t z = {0};
     *p = z;
@@ -77,7 +68,6 @@ pm_event_t pomodoro_tick(pomodoro_t *p, uint32_t now_ms) {
 uint32_t pomodoro_remaining_ms(const pomodoro_t *p, uint32_t now_ms) {
     if (p->state == PM_PAUSED) return p->paused_left_ms;
     if (p->state == PM_FOCUS || p->state == PM_BREAK_SHORT || p->state == PM_BREAK_LONG) {
-        (void)phase_len_ms;
         return p->phase_end_ms > now_ms ? p->phase_end_ms - now_ms : 0;
     }
     return 0;

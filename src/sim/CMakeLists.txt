@@ -7,6 +7,9 @@ set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../config/lv_conf.h CACHE STRING
 
 find_package(SDL2 REQUIRED)
 
+set(LV_CONF_BUILD_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
+set(LV_CONF_BUILD_DISABLE_DEMOS ON CACHE BOOL "" FORCE)
+set(LV_CONF_BUILD_DISABLE_THORVG_INTERNAL ON CACHE BOOL "" FORCE)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/lvgl lvgl_build)
 
 # config/lv_conf.h turns on LV_USE_SDL when WILIDORO_SIM is defined, so LVGL's

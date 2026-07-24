@@ -9,6 +9,9 @@ pico_sdk_init()
 
 # LVGL
 set(LV_CONF_PATH ${CMAKE_CURRENT_LIST_DIR}/config/lv_conf.h CACHE STRING "" FORCE)
+set(LV_CONF_BUILD_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
+set(LV_CONF_BUILD_DISABLE_DEMOS ON CACHE BOOL "" FORCE)
+set(LV_CONF_BUILD_DISABLE_THORVG_INTERNAL ON CACHE BOOL "" FORCE)
 add_subdirectory(third_party/lvgl)
 
 # wilibsp BSP static library
