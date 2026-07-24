@@ -58,11 +58,12 @@ static void labels_for_state(pm_state_t st, bool alarm, const char *out[5]) {
 
 void screen_timer_update(void) {
     app_t *a = app();
+    pm_state_t est = (a->pomo.state == PM_PAUSED) ? a->pomo.resume_state : a->pomo.state;
     uint32_t now = hal_now_ms();
     uint32_t rem = pomodoro_remaining_ms(&a->pomo, now);
     uint32_t total_ms = (uint32_t)a->pomo.cfg.focus_min * 60000u;
-    if (a->pomo.state==PM_BREAK_SHORT) total_ms=(uint32_t)a->pomo.cfg.short_min*60000u;
-    else if (a->pomo.state==PM_BREAK_LONG) total_ms=(uint32_t)a->pomo.cfg.long_min*60000u;
+    if (est==PM_BREAK_SHORT) total_ms=(uint32_t)a->pomo.cfg.short_min*60000u;
+    else if (est==PM_BREAK_LONG) total_ms=(uint32_t)a->pomo.cfg.long_min*60000u;
 
     if (a->pomo.state == PM_IDLE && !a->alarm_active) {
         total_ms = (uint32_t)a->pomo.cfg.focus_min * 60000u;
@@ -74,15 +75,15 @@ void screen_timer_update(void) {
 
     int32_t val = total_ms ? (int32_t)((uint64_t)rem*1000/total_ms) : 0;
     lv_arc_set_value(s_arc, val);
-    bool break_phase = (a->pomo.state==PM_BREAK_SHORT||a->pomo.state==PM_BREAK_LONG);
+    bool break_phase = (est==PM_BREAK_SHORT||est==PM_BREAK_LONG);
     lv_obj_set_style_arc_color(s_arc, lv_color_hex(break_phase?UI_COOL:UI_ACCENT), LV_PART_INDICATOR);
 
     const char *name = a->alarm_active ? "TIME'S UP" :
+        a->pomo.state==PM_PAUSED?"PAUSED":
         a->pomo.state==PM_FOCUS?"FOCUS":
-        (break_phase?"BREAK":
-        (a->pomo.state==PM_PAUSED?"PAUSED":"READY"));
+        (break_phase?"BREAK":"READY");
     char st[24]; snprintf(st, sizeof st, "%s  %u/%u", name,
-        (unsigned)(a->pomo.stats.completed % a->pomo.cfg.long_every),
+        (unsigned)(a->pomo.cfg.long_every ? (a->pomo.stats.completed % a->pomo.cfg.long_every) : 0),
         (unsigned)a->pomo.cfg.long_every);
     lv_label_set_text(s_state, st);
 
