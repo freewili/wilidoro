@@ -821,7 +821,7 @@ TEST pickup_after_stillness(void) {
     gesture_state_t g; gesture_init(&g);
     uint32_t t = 0;
     feed_steady(&g, 0, 0, 1.0f, &t, 1000);          /* still >= G_STILL_MS */
-    gesture_event_t ev = gesture_feed(&g, 0.5f, 0.4f, 1.0f, t);  /* jolt */
+    gesture_event_t ev = gesture_feed(&g, 1.0f, 0.0f, 1.0f, t);  /* jolt: mag 1.414, dev 0.414 > G_PICKUP_DEV */
     ASSERT_EQ(GEV_PICKUP, ev);
     PASS();
 }
