@@ -15,3 +15,4 @@ endfunction()
 
 add_core_test(test_smoke)
 add_core_test(test_pomodoro ${CORE}/pomodoro.c)
+add_core_test(test_beacon ${CORE}/beacon.c)
