@@ -1417,7 +1417,7 @@ Expected: compiles and links; `build/wilidoro.elf` and `build/wilidoro.uf2` prod
 
 Run: `powershell -File tools/flash.ps1`
 Then run: `powershell -File tools/rtt.ps1` (Ctrl+C after a few seconds)
-Expected (ON-HARDWARE ACCEPTANCE): the 480×320 panel shows a dark screen with a centered orange "wilidoro" label; backlight is on; RTT prints `wilidoro up: sys=250000 kHz`. (If the panel is dark/garbled, the fault is almost always the clk_peri re-source in `board_init` or the RGB565 byte-swap — check those first.)
+Expected (ON-HARDWARE ACCEPTANCE): the 480×320 panel shows a dark screen with a centered orange "wilidoro" label; backlight is on; RTT prints `wilidoro up: sys=250000 kHz`. (If the panel is dark/garbled, check, in order: (1) the clk_peri re-source in `board_init`; (2) the RGB565 byte-swap in the flush_cb; (3) **flash XIP timing at 250 MHz** — wilibsp's `board.c` comment states the 250 MHz overclock was validated for `copy_to_ram` (RAM execution); wilidoro runs XIP-from-flash (`pico_set_binary_type default`) at that same 250 MHz with `PICO_FLASH_SPI_CLKDIV 2`, a combination wilibsp did not validate. If (1) and (2) check out but the panel still misbehaves, suspect flash-XIP timing: try a higher `PICO_FLASH_SPI_CLKDIV` in `boards/freewili2.h`, or as a diagnostic temporarily lower the clock. This is the one integration risk the automated build cannot catch.)
 
 - [ ] **Step 8: Commit**
 
