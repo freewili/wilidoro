@@ -1,0 +1,70 @@
+#include "hal.h"
+#include <SDL2/SDL.h>
+#include <string.h>
+
+/* --- button event queue, fed by an SDL event watch (snoops without consuming) --- */
+#define QN 32
+static volatile int q_head = 0, q_tail = 0;
+static hal_btn_t q_buf[QN];
+static void q_push(hal_btn_t b) { int n = (q_head + 1) % QN; if (n != q_tail) { q_buf[q_head] = b; q_head = n; } }
+
+static int map_key(SDL_Scancode sc, hal_btn_t *out) {
+    switch (sc) {
+        case SDL_SCANCODE_Z: *out = HAL_BTN_GREY;   return 1;
+        case SDL_SCANCODE_X: *out = HAL_BTN_YELLOW; return 1;
+        case SDL_SCANCODE_C: *out = HAL_BTN_GREEN;  return 1;
+        case SDL_SCANCODE_V: *out = HAL_BTN_BLUE;   return 1;
+        case SDL_SCANCODE_B: *out = HAL_BTN_RED;    return 1;
+        case SDL_SCANCODE_UP:     *out = HAL_BTN_UP;     return 1;
+        case SDL_SCANCODE_DOWN:   *out = HAL_BTN_DOWN;   return 1;
+        case SDL_SCANCODE_LEFT:   *out = HAL_BTN_LEFT;   return 1;
+        case SDL_SCANCODE_RIGHT:  *out = HAL_BTN_RIGHT;  return 1;
+        case SDL_SCANCODE_RETURN: *out = HAL_BTN_CENTER; return 1;
+        default: return 0;
+    }
+}
+static int SDLCALL key_watch(void *u, SDL_Event *e) {
+    (void)u;
+    if (e->type == SDL_KEYDOWN && e->key.repeat == 0) {
+        hal_btn_t b; if (map_key(e->key.keysym.scancode, &b)) q_push(b);
+    }
+    return 1; /* keep event in queue for LVGL */
+}
+
+void hal_init(void) { SDL_AddEventWatch(key_watch, NULL); }
+void hal_pump(void) { /* SDL is pumped by lv_timer_handler; nothing to do */ }
+
+uint32_t hal_now_ms(void) { return SDL_GetTicks(); }
+
+bool hal_next_button(hal_btn_t *out) {
+    if (q_tail == q_head) return false;
+    *out = q_buf[q_tail]; q_tail = (q_tail + 1) % QN; return true;
+}
+
+/* LEDs — store state; a visible on-screen strip is a Plan C nicety, so keep it minimal here. */
+static uint8_t s_led_bri = 40;
+void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b) { (void)i;(void)r;(void)g;(void)b; }
+void hal_led_brightness(uint8_t level) { s_led_bri = level; }
+void hal_led_show(void) { (void)s_led_bri; }
+
+void hal_tone(uint16_t hz, uint16_t ms, uint8_t amp) { (void)hz;(void)ms;(void)amp; }
+void hal_audio_idle(void) {}
+
+void hal_backlight(uint8_t pct) { (void)pct; }
+
+bool hal_imu(float *ax, float *ay, float *az) { *ax=0;*ay=0;*az=1.0f; return true; }
+bool hal_lux(float *lux) { *lux = 300.0f; return true; }
+
+/* Fake neighbor: emit one valid beacon frame ~every 4s so the Nearby screen has content. */
+void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
+bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
+    static uint32_t last = 0; uint32_t now = SDL_GetTicks();
+    if (now - last < 4000) return false;
+    last = now;
+    beacon_msg_t m; memcpy(m.name, "JEN     ", BEACON_NAME_LEN);
+    m.state = BST_FOCUS; m.minutes_left = (uint8_t)(12 + (now/1000) % 5); m.completed = 3;
+    beacon_pack(&m, wire);
+    return true;
+}
+
+hal_caps_t hal_caps(void) { hal_caps_t c = { .radio=true,.imu=true,.light=true,.audio=true,.buttons=true,.leds=true }; return c; }
