@@ -6,7 +6,7 @@
 
 **Architecture:** A standalone C repo consuming `wilibsp` and `lvgl` as git submodules. Three build outputs: the RP2350B firmware (XIP-from-flash, LVGL partial buffers, wilibsp drivers), a Windows SDL simulator (LVGL's built-in SDL driver + stub HAL), and a host CTest binary set for `core/`. `core/` is pure C with zero hardware or LVGL dependencies so it is fully unit-testable off-target.
 
-**Tech Stack:** C11, Pico SDK 2.2.0 (ARM GCC 14.2), LVGL 9.2.3, CMake + Ninja, wilibsp BSP, SDL2 (simulator, MSYS2 mingw64 gcc), CTest.
+**Tech Stack:** C11, Pico SDK 2.2.0 (ARM GCC 14.2), LVGL 9.2.2, CMake + Ninja, wilibsp BSP, SDL2 (simulator, MSYS2 mingw64 gcc), CTest.
 
 ## Global Constraints
 
@@ -33,7 +33,7 @@ Every task's requirements implicitly include these. Values are copied verbatim f
 ```
 wilidoro/
   wilibsp/                         submodule -> github.com/freewili/wilibsp
-  third_party/lvgl/                submodule -> github.com/lvgl/lvgl @ v9.2.3
+  third_party/lvgl/                submodule -> github.com/lvgl/lvgl @ v9.2.2
   boards/freewili2.h               our SDK board header (flash-boot settings)
   config/lv_conf.h                 shared LVGL config (device + sim via #ifdef)
   src/
@@ -80,7 +80,7 @@ wilidoro/
 cd /c/~prj/Dropbox/vibeProjects/wilidoro
 git submodule add https://github.com/freewili/wilibsp.git wilibsp
 git submodule add https://github.com/lvgl/lvgl.git third_party/lvgl
-git -C third_party/lvgl checkout v9.2.3
+git -C third_party/lvgl checkout v9.2.2
 git -C wilibsp checkout master
 git add .gitmodules wilibsp third_party/lvgl
 ```
@@ -821,7 +821,7 @@ TEST pickup_after_stillness(void) {
     gesture_state_t g; gesture_init(&g);
     uint32_t t = 0;
     feed_steady(&g, 0, 0, 1.0f, &t, 1000);          /* still >= G_STILL_MS */
-    gesture_event_t ev = gesture_feed(&g, 0.5f, 0.4f, 1.0f, t);  /* jolt */
+    gesture_event_t ev = gesture_feed(&g, 1.0f, 0.0f, 1.0f, t);  /* jolt: mag 1.414, dev 0.414 > G_PICKUP_DEV */
     ASSERT_EQ(GEV_PICKUP, ev);
     PASS();
 }
@@ -1066,7 +1066,7 @@ git commit -m "feat(core): auto-dim curve + LED brightness mapping with tests"
 
 - [ ] **Step 2: Write the shared lv_conf.h**
 
-`config/lv_conf.h` — start from the LVGL 9.2.3 template and apply these deltas (only the lines that differ from the template need changing; the values below are authoritative for this project):
+`config/lv_conf.h` — start from the LVGL 9.2.2 template (`third_party/lvgl/lv_conf_template.h`) and apply these deltas (only the lines that differ from the template need changing; the values below are authoritative for this project):
 ```c
 /* excerpt of the settings that MUST hold — see third_party/lvgl/lv_conf_template.h for the rest */
 #define LV_COLOR_DEPTH 16
@@ -1417,7 +1417,7 @@ Expected: compiles and links; `build/wilidoro.elf` and `build/wilidoro.uf2` prod
 
 Run: `powershell -File tools/flash.ps1`
 Then run: `powershell -File tools/rtt.ps1` (Ctrl+C after a few seconds)
-Expected (ON-HARDWARE ACCEPTANCE): the 480×320 panel shows a dark screen with a centered orange "wilidoro" label; backlight is on; RTT prints `wilidoro up: sys=250000 kHz`. (If the panel is dark/garbled, the fault is almost always the clk_peri re-source in `board_init` or the RGB565 byte-swap — check those first.)
+Expected (ON-HARDWARE ACCEPTANCE): the 480×320 panel shows a dark screen with a centered orange "wilidoro" label; backlight is on; RTT prints `wilidoro up: sys=250000 kHz`. (If the panel is dark/garbled, check, in order: (1) the clk_peri re-source in `board_init`; (2) the RGB565 byte-swap in the flush_cb; (3) **flash XIP timing at 250 MHz** — wilibsp's `board.c` comment states the 250 MHz overclock was validated for `copy_to_ram` (RAM execution); wilidoro runs XIP-from-flash (`pico_set_binary_type default`) at that same 250 MHz with `PICO_FLASH_SPI_CLKDIV 2`, a combination wilibsp did not validate. If (1) and (2) check out but the panel still misbehaves, suspect flash-XIP timing: try a higher `PICO_FLASH_SPI_CLKDIV` in `boards/freewili2.h`, or as a diagnostic temporarily lower the clock. This is the one integration risk the automated build cannot catch.)
 
 - [ ] **Step 8: Commit**
 

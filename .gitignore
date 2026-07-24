@@ -1,2 +1,6 @@
 .superpowers/
 build/
+build-*/
+build-tests/
+build-sim/
+*.uf2

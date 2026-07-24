@@ -1,0 +1,8 @@
+{
+  "version": 3,
+  "configurePresets": [
+    { "name": "target", "generator": "Ninja", "binaryDir": "${sourceDir}/build",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" } }
+  ],
+  "buildPresets": [ { "name": "target", "configurePreset": "target" } ]
+}
