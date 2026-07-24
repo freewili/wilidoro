@@ -25,9 +25,17 @@ add_executable(wilidoro
     src/core/beacon.c
     src/core/gestures.c
     src/core/dimming.c
+    src/hal/hal_target.c
+    src/app/app_model.c
+    src/app/app.c
+    src/ui/ui.c
+    src/ui/screen_timer.c
+    src/ui/screen_settings.c
+    src/ui/screen_nearby.c
 )
 target_include_directories(wilidoro PRIVATE
     src/core src/hal src/target
+    src/app src/ui
     wilibsp/bsp
     config
 )
