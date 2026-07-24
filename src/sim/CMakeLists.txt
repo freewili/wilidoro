@@ -26,10 +26,19 @@ add_executable(wilidoro_sim
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/beacon.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/gestures.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/dimming.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../hal/hal_sim.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app/app_model.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/ui.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_timer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_settings.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_nearby.c
 )
 target_include_directories(wilidoro_sim PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../core
     ${CMAKE_CURRENT_SOURCE_DIR}/../hal
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui
     ${CMAKE_CURRENT_SOURCE_DIR}/../../config
     ${SDL2_INCLUDE_DIRS}
 )
