@@ -55,9 +55,8 @@ void screen_nearby_update(void) {
         lv_obj_align(s, LV_ALIGN_BOTTOM_LEFT, 6, -4);
         shown++;
     }
-    lv_obj_set_style_bg_opa(s_empty, shown?LV_OPA_TRANSP:LV_OPA_COVER, 0);
-    lv_obj_add_flag(s_empty, shown?LV_OBJ_FLAG_HIDDEN:0);
-    if (!shown) lv_obj_remove_flag(s_empty, LV_OBJ_FLAG_HIDDEN);
+    if (shown) lv_obj_add_flag(s_empty, LV_OBJ_FLAG_HIDDEN);
+    else       lv_obj_remove_flag(s_empty, LV_OBJ_FLAG_HIDDEN);
 }
 
 void screen_nearby_softkey(int col) { if (col==0) app_goto(SCREEN_TIMER); }

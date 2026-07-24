@@ -64,6 +64,11 @@ void screen_timer_update(void) {
     if (a->pomo.state==PM_BREAK_SHORT) total_ms=(uint32_t)a->pomo.cfg.short_min*60000u;
     else if (a->pomo.state==PM_BREAK_LONG) total_ms=(uint32_t)a->pomo.cfg.long_min*60000u;
 
+    if (a->pomo.state == PM_IDLE && !a->alarm_active) {
+        total_ms = (uint32_t)a->pomo.cfg.focus_min * 60000u;
+        rem = total_ms;   /* full ring, MM:00 preview */
+    }
+
     char buf[8]; unsigned s = rem/1000; snprintf(buf, sizeof buf, "%02u:%02u", s/60, s%60);
     lv_label_set_text(s_time, buf);
 
