@@ -559,7 +559,27 @@ git commit -m "feat(hal): SDL host HAL (keyboard buttons, fake sensors + neighbo
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 
-/* uartkbd_btn_t enum order matches hal_btn_t exactly (grey..page), so cast is safe. */
+/* NOTE: uartkbd_btn_t's D-pad block is CENTER,UP,DOWN,LEFT,RIGHT but hal_btn_t's is
+   UP,DOWN,LEFT,RIGHT,CENTER — a numeric cast would SWAP D-pad buttons. Map explicitly. */
+static bool map_btn(uartkbd_btn_t in, hal_btn_t *out) {
+    switch (in) {
+        case UARTKBD_BTN_GREY:   *out = HAL_BTN_GREY;   return true;
+        case UARTKBD_BTN_YELLOW: *out = HAL_BTN_YELLOW; return true;
+        case UARTKBD_BTN_GREEN:  *out = HAL_BTN_GREEN;  return true;
+        case UARTKBD_BTN_BLUE:   *out = HAL_BTN_BLUE;   return true;
+        case UARTKBD_BTN_RED:    *out = HAL_BTN_RED;    return true;
+        case UARTKBD_BTN_NAV_UP:     *out = HAL_BTN_UP;     return true;
+        case UARTKBD_BTN_NAV_DOWN:   *out = HAL_BTN_DOWN;   return true;
+        case UARTKBD_BTN_NAV_LEFT:   *out = HAL_BTN_LEFT;   return true;
+        case UARTKBD_BTN_NAV_RIGHT:  *out = HAL_BTN_RIGHT;  return true;
+        case UARTKBD_BTN_NAV_CENTER: *out = HAL_BTN_CENTER; return true;
+        case UARTKBD_BTN_HOME:   *out = HAL_BTN_HOME;   return true;
+        case UARTKBD_BTN_OK:     *out = HAL_BTN_OK;     return true;
+        case UARTKBD_BTN_CANCEL: *out = HAL_BTN_CANCEL; return true;
+        case UARTKBD_BTN_PAGE:   *out = HAL_BTN_PAGE;   return true;
+        default: return false;
+    }
+}
 void hal_init(void) {
     uartkbd_init();
     ws2812_init(pio1, (uint)pio_claim_unused_sm(pio1, true), PIN_LED_DATA);
@@ -575,7 +595,7 @@ uint32_t hal_now_ms(void) { return to_ms_since_boot(get_absolute_time()); }
 bool hal_next_button(hal_btn_t *out) {
     uartkbd_event_t ev;
     while (uartkbd_next_event(&ev)) {
-        if (ev.pressed && (int)ev.btn < HAL_BTN_COUNT) { *out = (hal_btn_t)ev.btn; return true; }
+        if (ev.pressed && map_btn(ev.btn, out)) return true;
     }
     return false;
 }
@@ -603,7 +623,7 @@ hal_caps_t hal_caps(void) {
     return c;
 }
 ```
-Note: verify `uartkbd_btn_t` values (grey=0..page=13) match `hal_btn_t` (grey=0..page=13) — they do by construction. If the wilibsp header orders them differently, replace the cast with an explicit `switch`. Confirm the include paths (`input/uartkbd.h`) against the actual `wilibsp/bsp/input/` layout and adjust to match how `fw2.h` exposes them (it may already include them).
+Note: the D-pad mapping matters — `uartkbd_btn_t` orders NAV as CENTER,UP,DOWN,LEFT,RIGHT while `hal_btn_t` orders it UP,DOWN,LEFT,RIGHT,CENTER, so the explicit `map_btn()` switch above is required (a numeric cast would swap D-pad buttons). GREY..RED (0..4) and HOME..PAGE do line up. Confirm the include paths (`input/uartkbd.h`) against the actual `wilibsp/bsp/input/` layout — `fw2.h` may already include them transitively.
 
 - [ ] **Step 2: Add sources to root `CMakeLists.txt`**
 
