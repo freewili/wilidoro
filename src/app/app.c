@@ -37,14 +37,20 @@ void app_sound_stop(void) {
     hal_audio_idle();
 }
 
-/* 20 ms cadence: note durations are 40-400 ms, far finer than the 200 ms app tick. */
+/* 20 ms cadence: note durations are 40-400 ms, far finer than the 200 ms app tick.
+   The while loop dispatches at most one note per callback: sound_next() sets its
+   next_ms from the same `now` passed in, and every table note is >=40 ms, so the
+   wrap-safe time check always fails on a second call in the same tick. A delayed
+   callback (a long LVGL flush, say) just inserts extra silence between notes --
+   the tone itself is still stopped on time by hal_pump()'s own deadline. Idle
+   power-down after a sequence is likewise left to hal_pump() -> audio_pump(),
+   which powers the stage down AUDIO_IDLE_MS after the last tone ends; forcing it
+   here would defeat that hysteresis on every softkey blip. */
 static void sound_cb(lv_timer_t *t) {
     (void)t;
     uint32_t now = hal_now_ms();
-    bool was_active = sound_active(&s_app.sound);
     sound_note_t n;
     while (sound_next(&s_app.sound, now, &n)) hal_tone(n.hz, n.ms, n.amp);
-    if (was_active && !sound_active(&s_app.sound)) hal_audio_idle();
 }
 
 static void route_softkey(int col) {
