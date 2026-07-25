@@ -28,10 +28,15 @@ add_executable(wilidoro
     src/hal/hal_target.c
     src/app/app_model.c
     src/app/app.c
+    src/app/timer_view.c
     src/ui/ui.c
     src/ui/screen_timer.c
     src/ui/screen_settings.c
     src/ui/screen_nearby.c
+    src/ui/theme.c
+    src/ui/theme_neon.c
+    src/ui/theme_arcade.c
+    src/ui/theme_flip.c
 )
 target_include_directories(wilidoro PRIVATE
     src/core src/hal src/target

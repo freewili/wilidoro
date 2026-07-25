@@ -2,9 +2,11 @@
 #include "ui.h"
 #include "app.h"
 #include "app_model.h"
+#include "screen_timer.h"
+#include "theme.h"
 #include <stdio.h>
 
-static lv_obj_t *s_scr, *s_list, *s_bar;
+static lv_obj_t *s_scr, *s_list, *s_bar, *s_title;
 static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beacon, *s_val_theme;
 
 static void refresh_values(void) {
@@ -30,7 +32,7 @@ static void adj_event(lv_event_t *e) {
         case SET_LONG:  app_settings_adjust_long(s, sign);  break;
         case SET_VOL:   app_settings_adjust_volume(s, sign);break;
         case SET_BEACON:s->beacon_on = !s->beacon_on; break;
-        case SET_THEME: app_settings_cycle_theme(s); break;
+        case SET_THEME: app_settings_cycle_theme(s); screen_timer_apply_theme(); break;
     }
     refresh_values();
 }
@@ -57,9 +59,9 @@ static lv_obj_t *add_row(const char *name, int which) {
 
 lv_obj_t *screen_settings_create(void) {
     s_scr = ui_screen();
-    lv_obj_t *title = lv_label_create(s_scr); lv_label_set_text(title,"SETTINGS");
-    lv_obj_set_style_text_color(title, lv_color_hex(UI_MUTED),0);
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 12, 8);
+    s_title = lv_label_create(s_scr); lv_label_set_text(s_title,"SETTINGS");
+    lv_obj_set_style_text_color(s_title, lv_color_hex(UI_MUTED),0);
+    lv_obj_align(s_title, LV_ALIGN_TOP_LEFT, 12, 8);
 
     s_list = lv_obj_create(s_scr);
     lv_obj_set_size(s_list, 476, 236);
@@ -81,12 +83,14 @@ lv_obj_t *screen_settings_create(void) {
     return s_scr;
 }
 
-void screen_settings_update(void) { /* values refresh on edit; nothing periodic */ }
+void screen_settings_update(void) {
+    lv_obj_set_style_text_color(s_title, lv_color_hex(theme_get(app()->settings.theme)->accent), 0);
+}
 
 void screen_settings_softkey(int col) {
     app_t *a = app();
     if (col==0) { app_goto(SCREEN_TIMER); }
-    else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); }
+    else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); screen_timer_apply_theme(); }
     else if (col==4) {
         pm_config_t c = { a->settings.focus_min, a->settings.short_min, a->settings.long_min, a->settings.long_every };
         if (a->pomo.state == PM_IDLE) pomodoro_init(&a->pomo, c); /* apply only when idle to avoid mid-session surprise */

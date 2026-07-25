@@ -24,3 +24,11 @@ target_include_directories(test_app_model PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${
 target_compile_options(test_app_model PRIVATE -Wall -Wextra)
 target_link_libraries(test_app_model m)
 add_test(NAME test_app_model COMMAND test_app_model)
+
+add_executable(test_timer_view test_timer_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/timer_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/pomodoro.c)
+target_include_directories(test_timer_view PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CORE} ${CMAKE_CURRENT_SOURCE_DIR}/../src/app)
+target_compile_options(test_timer_view PRIVATE -Wall -Wextra)
+target_link_libraries(test_timer_view m)
+add_test(NAME test_timer_view COMMAND test_timer_view)
