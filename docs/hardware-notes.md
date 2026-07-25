@@ -32,8 +32,8 @@ Wilidoro therefore scales every tone by `TONE_AMP_CAP = 160` of 255 in
 ceiling is about **0.54 full scale** — roughly 29 % of full-scale sine power.
 Scaling (not clamping) keeps the sound table's relative dynamics intact: a quiet
 40-amp blip stays proportionally quieter than a 215-amp alarm note. This is a
-bench-comfort default in the same spirit as `LED_BRIGHT_MAX = 40`; it has **not**
-yet been level-checked on real hardware.
+bench-comfort default in the same spirit as `LED_BRIGHT_MAX = 40`; it was
+level-checked on real hardware on 2026-07-25 and needed no adjustment.
 
 The output stage is powered down (`codec_nau88c10_speaker_low_power()`) after
 `AUDIO_IDLE_MS = 1500` of silence, so the speaker does not idle-hiss between
@@ -66,8 +66,10 @@ Verified at boot: RTT reports `codec: rev(0x3F)=0x01A pm2(0x02)=0x015` then
 `codec_nau88c10_input_ok()` gates on the ADC/mic path as well as the silicon
 revision — it passes here, but it over-tests for a playback-only app.)
 
-Confirmed by ear: the per-theme sounds are good and the level is right —
-`TONE_AMP_CAP = 160` needed no adjustment. Confirmed by mic + Goertzel analysis:
+Confirmed by ear: the per-theme **start chimes** are good and the level is
+right — `TONE_AMP_CAP = 160` needed no adjustment for them. (The focus-end
+alarm, which holds the loudest table entries at amp 215, was not played this
+session; see "Not yet exercised" below.) Confirmed by mic + Goertzel analysis:
 clean sustained notes at a sound-table frequency (787 Hz measured against the
 781.7 Hz the HAL emits for the 784 Hz table entry), magnitude ~1100 versus a
 silent-control floor of 0.0.
@@ -85,6 +87,9 @@ Not yet exercised (needs a longer session; none is a blocker):
 - Whether the low notes (523/659 Hz) carry on this small speaker as well as the
   784/1047 Hz ones. If they don't, pitch the tables higher rather than raising
   `TONE_AMP_CAP` — a 0.5 W speaker has very little low end.
+- Listening for a residual tone or DC click across rests (`hz == 0`) and at
+  sequence end. Only the Flip and Arcade alarms have rests, and neither has
+  been exercised yet, so this is still open.
 
 ---
 
