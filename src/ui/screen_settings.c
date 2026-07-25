@@ -7,7 +7,7 @@
 #include <stdio.h>
 
 static lv_obj_t *s_scr, *s_list, *s_bar, *s_title;
-static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beacon, *s_val_theme;
+static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beacon, *s_val_theme, *s_val_dvi;
 
 static void refresh_values(void) {
     app_settings_t *s = &app()->settings; char b[16];
@@ -16,12 +16,13 @@ static void refresh_values(void) {
     snprintf(b,sizeof b,"%u min",s->long_min);  lv_label_set_text(s_val_long,b);
     snprintf(b,sizeof b,"%u%%",s->volume);      lv_label_set_text(s_val_vol,b);
     lv_label_set_text(s_val_beacon, s->beacon_on?"on":"off");
+    lv_label_set_text(s_val_dvi, s->dvi_on?"on":"off");
     static const char *tn[3]={"Neon Arc","Arcade","Flip Clock"};
     lv_label_set_text(s_val_theme, tn[s->theme%3]);
 }
 
 /* Each row: [label] [-] [value] [+]. user_data on +/- encodes which setting & sign. */
-enum { SET_FOCUS=1, SET_SHORT, SET_LONG, SET_VOL, SET_BEACON, SET_THEME };
+enum { SET_FOCUS=1, SET_SHORT, SET_LONG, SET_VOL, SET_BEACON, SET_THEME, SET_DVI };
 static void adj_event(lv_event_t *e) {
     intptr_t code = (intptr_t)lv_event_get_user_data(e);
     int which = (int)(code >> 1); int sign = (code & 1) ? +1 : -1;
@@ -33,6 +34,7 @@ static void adj_event(lv_event_t *e) {
         case SET_VOL:   app_settings_adjust_volume(s, sign);break;
         case SET_BEACON:s->beacon_on = !s->beacon_on; break;
         case SET_THEME: app_settings_cycle_theme(s); screen_timer_apply_theme(); break;
+        case SET_DVI:   s->dvi_on = !s->dvi_on; app_dvi_apply(); break;
     }
     refresh_values();
 }
@@ -87,6 +89,7 @@ lv_obj_t *screen_settings_create(void) {
     s_val_vol    = add_row("Volume",       SET_VOL);
     s_val_beacon = add_row("Beacon",       SET_BEACON);
     s_val_theme  = add_row("Theme",        SET_THEME);
+    s_val_dvi    = add_row("DVI output",   SET_DVI);
 
     s_bar = ui_softkey_bar(s_scr, screen_settings_softkey);
     const char *lbl[5] = {"Back", 0, "Default", 0, "Save"};

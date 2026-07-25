@@ -8,6 +8,7 @@
 #include "dimming.h"
 #include "led_pattern.h"
 #include "timer_view.h"
+#include "dvi_view.h"
 #include "lvgl.h"
 
 static app_t s_app;
@@ -22,6 +23,7 @@ static dim_state_t s_dim;
 static uint32_t s_next_lux;
 static uint32_t s_next_tick_ms;    /* next focus tick (0 = none scheduled) */
 static uint32_t s_alarm_next_ms;   /* next alarm re-ring while un-dismissed */
+static dvi_dirty_t s_dvi_dirty;
 
 /* Re-ring the un-acknowledged focus-end alarm on this cadence (the spec calls
    for ring-until-acknowledged; each ring is a one-shot sequence). */
@@ -51,6 +53,12 @@ static void sound_cb(lv_timer_t *t) {
     uint32_t now = hal_now_ms();
     sound_note_t n;
     while (sound_next(&s_app.sound, now, &n)) hal_tone(n.hz, n.ms, n.amp);
+}
+
+/* Blank/unblank the DVI output and force a repaint next tick when re-enabled. */
+void app_dvi_apply(void) {
+    hal_dvi_enable(s_app.settings.dvi_on);
+    if (s_app.settings.dvi_on) dvi_dirty_reset(&s_dvi_dirty);
 }
 
 static void route_softkey(int col) {
@@ -117,6 +125,15 @@ static void tick_cb(lv_timer_t *t) {
     }
     /* per-theme LED pattern */
     timer_view_t lv = timer_view_make(&s_app.pomo, s_app.alarm_active, now);
+    /* Big-room DVI display: repaint only when the visible content changes. The
+       countdown ticks once a second, so the 200 ms cadence is ample. */
+    hal_dvi_surface_t ds;
+    if (s_app.settings.dvi_on && hal_dvi_surface(&ds)) {
+        if (dvi_view_dirty(&s_dvi_dirty, s_app.settings.theme, &lv)) {
+            dvi_surface_t vs = { ds.base, ds.stride, ds.w, ds.h };
+            dvi_view_render(s_app.settings.theme, &lv, &vs);
+        }
+    }
     led_rgb_t leds[LED_COUNT];
     led_pattern_render(s_app.settings.theme, &lv, leds);
     for (int i = 0; i < LED_COUNT; i++) hal_led_set(i, leds[i].r, leds[i].g, leds[i].b);
@@ -142,6 +159,7 @@ void app_init(void) {
     pomodoro_init(&s_app.pomo, cfg);
     neighbor_table_init(&s_app.neighbors);
     dim_init(&s_dim, 100.0f);
+    dvi_dirty_reset(&s_dvi_dirty);
     s_next_lux = 0;
     s_app.screen = SCREEN_TIMER; s_app.alarm_active = false;
     sound_reset(&s_app.sound);
@@ -154,4 +172,6 @@ void app_init(void) {
 
     lv_timer_create(tick_cb, 200, NULL);
     lv_timer_create(sound_cb, 20, NULL);
+
+    app_dvi_apply();
 }
