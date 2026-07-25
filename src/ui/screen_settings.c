@@ -2,6 +2,7 @@
 #include "ui.h"
 #include "app.h"
 #include "app_model.h"
+#include "screen_timer.h"
 #include <stdio.h>
 
 static lv_obj_t *s_scr, *s_list, *s_bar;
@@ -30,7 +31,7 @@ static void adj_event(lv_event_t *e) {
         case SET_LONG:  app_settings_adjust_long(s, sign);  break;
         case SET_VOL:   app_settings_adjust_volume(s, sign);break;
         case SET_BEACON:s->beacon_on = !s->beacon_on; break;
-        case SET_THEME: app_settings_cycle_theme(s); break;
+        case SET_THEME: app_settings_cycle_theme(s); screen_timer_apply_theme(); break;
     }
     refresh_values();
 }

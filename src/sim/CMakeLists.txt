@@ -29,10 +29,15 @@ add_executable(wilidoro_sim
     ${CMAKE_CURRENT_SOURCE_DIR}/../hal/hal_sim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/app_model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/app.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app/timer_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_timer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_settings.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_nearby.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/theme.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/theme_neon.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/theme_arcade.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ui/theme_flip.c
 )
 target_include_directories(wilidoro_sim PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../core
