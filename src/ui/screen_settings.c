@@ -39,8 +39,17 @@ static void adj_event(lv_event_t *e) {
 
 static lv_obj_t *add_row(const char *name, int which) {
     lv_obj_t *row = lv_obj_create(s_list);
-    lv_obj_set_size(row, 460, 40);
-    lv_obj_set_style_bg_color(row, lv_color_hex(UI_PANEL), 0);
+    lv_obj_set_size(row, lv_pct(100), 44);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);   /* let the LIST scroll, not the row */
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);    /* flat: no box around each setting */
+    lv_obj_set_style_radius(row, 0, 0);
+    lv_obj_set_style_border_width(row, 1, 0);          /* thin bottom divider instead of a box */
+    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(UI_PANEL), 0);
+    lv_obj_set_style_pad_top(row, 4, 0);
+    lv_obj_set_style_pad_bottom(row, 4, 0);
+    lv_obj_set_style_pad_left(row, 8, 0);
+    lv_obj_set_style_pad_right(row, 8, 0);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_t *l = lv_label_create(row); lv_label_set_text(l,name);
@@ -67,7 +76,10 @@ lv_obj_t *screen_settings_create(void) {
     lv_obj_set_size(s_list, 476, 236);
     lv_obj_align(s_list, LV_ALIGN_TOP_MID, 0, 34);
     lv_obj_set_style_bg_color(s_list, lv_color_hex(UI_BG), 0);
+    lv_obj_set_style_border_width(s_list, 0, 0);
+    lv_obj_set_style_pad_all(s_list, 2, 0);
     lv_obj_set_flex_flow(s_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_AUTO);   /* visible scroll cue */
 
     s_val_focus  = add_row("Focus length", SET_FOCUS);
     s_val_short  = add_row("Short break",  SET_SHORT);
