@@ -57,13 +57,13 @@ void screen_timer_softkey(int col) {
     app_t *a = app();
     uint32_t now = hal_now_ms();
     if (a->alarm_active) {
-        if (col==0) { pomodoro_acknowledge(&a->pomo, now); a->alarm_active=false; }
+        if (col==0) { pomodoro_acknowledge(&a->pomo, now); a->alarm_active=false; app_sound_stop(); }
         else if (col==4) app_goto(SCREEN_SETTINGS);
         return;
     }
     switch (a->pomo.state) {
         case PM_IDLE:
-            if (col==0) pomodoro_start_focus(&a->pomo, now);
+            if (col==0) { pomodoro_start_focus(&a->pomo, now); app_sound(SND_START); }
             else if (col==3) app_goto(SCREEN_NEARBY);
             else if (col==4) app_goto(SCREEN_SETTINGS);
             break;

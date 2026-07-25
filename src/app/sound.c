@@ -11,6 +11,7 @@
 // so decay is written into the table as a trailing note at the same pitch with
 // a lower amp.
 #include "sound.h"
+#include <stddef.h>   /* NULL -- not transitively provided by newlib's <stdint.h>/<stdbool.h> */
 
 /* ---- theme 0: Neon Arc -- airy rising sine figures ---- */
 static const sound_note_t neon_start[]     = {{ 660, 90,150},{ 990, 90,150},{1320,140,140}};

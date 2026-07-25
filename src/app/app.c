@@ -1,5 +1,6 @@
 #include "app.h"
 #include "hal.h"
+#include "sound.h"
 #include "ui.h"
 #include "screen_timer.h"
 #include "screen_settings.h"
@@ -19,8 +20,35 @@ app_t *app(void) { return &s_app; }
 static lv_obj_t *s_scr[3];
 static dim_state_t s_dim;
 static uint32_t s_next_lux;
+static uint32_t s_next_tick_ms;    /* next focus tick (0 = none scheduled) */
+static uint32_t s_alarm_next_ms;   /* next alarm re-ring while un-dismissed */
+
+/* Re-ring the un-acknowledged focus-end alarm on this cadence (the spec calls
+   for ring-until-acknowledged; each ring is a one-shot sequence). */
+#define ALARM_REPEAT_MS 5000u
+#define FOCUS_TICK_MS   60000u
+
+void app_sound(sound_id_t id) {
+    sound_play(&s_app.sound, s_app.settings.theme, id, s_app.settings.volume, hal_now_ms());
+}
+
+void app_sound_stop(void) {
+    sound_reset(&s_app.sound);
+    hal_audio_idle();
+}
+
+/* 20 ms cadence: note durations are 40-400 ms, far finer than the 200 ms app tick. */
+static void sound_cb(lv_timer_t *t) {
+    (void)t;
+    uint32_t now = hal_now_ms();
+    bool was_active = sound_active(&s_app.sound);
+    sound_note_t n;
+    while (sound_next(&s_app.sound, now, &n)) hal_tone(n.hz, n.ms, n.amp);
+    if (was_active && !sound_active(&s_app.sound)) hal_audio_idle();
+}
 
 static void route_softkey(int col) {
+    app_sound(SND_BLIP);
     switch (s_app.screen) {
         case SCREEN_TIMER:    screen_timer_softkey(col);    break;
         case SCREEN_SETTINGS: screen_settings_softkey(col); break;
@@ -34,8 +62,30 @@ static void tick_cb(lv_timer_t *t) {
 
     /* advance the pomodoro; surface focus-end as an alarm state */
     pm_event_t ev = pomodoro_tick(&s_app.pomo, now);
-    if (ev == PM_EV_FOCUS_ENDED) { s_app.alarm_active = true; hal_tone(880, 200, 200); }
-    if (ev == PM_EV_BREAK_ENDED) { hal_tone(660, 120, 160); }
+    if (ev == PM_EV_FOCUS_ENDED) {
+        s_app.alarm_active = true;
+        app_sound(SND_FOCUS_END);
+        s_alarm_next_ms = now + ALARM_REPEAT_MS;
+        s_next_tick_ms = 0;
+    }
+    if (ev == PM_EV_BREAK_ENDED) app_sound(SND_BREAK_END);
+
+    /* ring until acknowledged */
+    if (s_app.alarm_active && (int32_t)(now - s_alarm_next_ms) >= 0) {
+        app_sound(SND_FOCUS_END);
+        s_alarm_next_ms = now + ALARM_REPEAT_MS;
+    }
+
+    /* optional quiet focus tick, once a minute while focus actually runs */
+    if (s_app.settings.focus_tick && s_app.pomo.state == PM_FOCUS && !s_app.alarm_active) {
+        if (s_next_tick_ms == 0) s_next_tick_ms = now + FOCUS_TICK_MS;
+        else if ((int32_t)(now - s_next_tick_ms) >= 0) {
+            app_sound(SND_TICK);
+            s_next_tick_ms = now + FOCUS_TICK_MS;
+        }
+    } else {
+        s_next_tick_ms = 0;
+    }
 
     /* physical buttons -> softkey columns (grey..red == cols 0..4) */
     hal_btn_t b;
@@ -88,6 +138,8 @@ void app_init(void) {
     dim_init(&s_dim, 100.0f);
     s_next_lux = 0;
     s_app.screen = SCREEN_TIMER; s_app.alarm_active = false;
+    sound_reset(&s_app.sound);
+    s_next_tick_ms = 0; s_alarm_next_ms = 0;
 
     s_scr[SCREEN_TIMER]    = screen_timer_create();
     s_scr[SCREEN_SETTINGS] = screen_settings_create();
@@ -95,4 +147,5 @@ void app_init(void) {
     lv_screen_load(s_scr[SCREEN_TIMER]);
 
     lv_timer_create(tick_cb, 200, NULL);
+    lv_timer_create(sound_cb, 20, NULL);
 }
