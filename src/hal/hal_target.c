@@ -5,6 +5,7 @@
 #include "leds/ws2812_driver.h"
 #include "leds/led_color.h"
 #include "bl_pwm.h"
+#include "sensors/opt4001.h"
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 
@@ -35,6 +36,8 @@ static bool map_btn(uartkbd_btn_t in, hal_btn_t *out) {
     }
 }
 
+static bool s_light;
+
 void hal_init(void) {
     uartkbd_init();
     ws2812_init(pio1, (uint)pio_claim_unused_sm(pio1, true), PIN_LED_DATA);
@@ -42,6 +45,7 @@ void hal_init(void) {
     ws2812_clear();
     ws2812_show();
     bl_pwm_init();       /* backlight full-on; auto-dim is Plan C */
+    s_light = opt4001_init();
 }
 void hal_pump(void) { uartkbd_task(); }
 
@@ -68,12 +72,12 @@ void hal_audio_idle(void) {}
 void hal_backlight(uint8_t pct) { bl_pwm_set(pct); }
 
 bool hal_imu(float *ax, float *ay, float *az) { (void)ax;(void)ay;(void)az; return false; }  /* Plan C */
-bool hal_lux(float *lux) { (void)lux; return false; }                                        /* Plan C */
+bool hal_lux(float *lux) { return s_light && opt4001_read(lux); }
 
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }                       /* Plan C */
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }               /* Plan C */
 
 hal_caps_t hal_caps(void) {
-    hal_caps_t c = { .radio=false,.imu=false,.light=false,.audio=false,.buttons=true,.leds=true };
+    hal_caps_t c = { .radio=false,.imu=false,.light=s_light,.audio=false,.buttons=true,.leds=true };
     return c;
 }

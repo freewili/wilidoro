@@ -23,10 +23,15 @@ static int map_key(SDL_Scancode sc, hal_btn_t *out) {
         default: return 0;
     }
 }
+/* fake ambient lux for the auto-dim demo; [ / ] lower/raise it (not buttons, so not queued) */
+static float s_lux = 300.0f;
+
 static int SDLCALL key_watch(void *u, SDL_Event *e) {
     (void)u;
     if (e->type == SDL_KEYDOWN && e->key.repeat == 0) {
         hal_btn_t b; if (map_key(e->key.keysym.scancode, &b)) q_push(b);
+        if (e->key.keysym.scancode == SDL_SCANCODE_LEFTBRACKET)  s_lux = (s_lux > 20.f) ? s_lux - 40.f : 0.f;
+        if (e->key.keysym.scancode == SDL_SCANCODE_RIGHTBRACKET) s_lux = (s_lux < 960.f) ? s_lux + 40.f : 1000.f;
     }
     return 1; /* keep event in queue for LVGL */
 }
@@ -53,7 +58,7 @@ void hal_audio_idle(void) {}
 void hal_backlight(uint8_t pct) { (void)pct; }
 
 bool hal_imu(float *ax, float *ay, float *az) { *ax=0;*ay=0;*az=1.0f; return true; }
-bool hal_lux(float *lux) { *lux = 300.0f; return true; }
+bool hal_lux(float *lux) { *lux = s_lux; return true; }
 
 /* Fake neighbor: emit one valid beacon frame ~every 4s so the Nearby screen has content. */
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
