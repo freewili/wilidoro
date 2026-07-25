@@ -41,3 +41,9 @@ target_include_directories(test_led_pattern PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} 
 target_compile_options(test_led_pattern PRIVATE -Wall -Wextra)
 target_link_libraries(test_led_pattern m)
 add_test(NAME test_led_pattern COMMAND test_led_pattern)
+
+add_executable(test_sound test_sound.c ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/sound.c)
+target_include_directories(test_sound PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../src/app)
+target_compile_options(test_sound PRIVATE -Wall -Wextra)
+target_link_libraries(test_sound m)
+add_test(NAME test_sound COMMAND test_sound)

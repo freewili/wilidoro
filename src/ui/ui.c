@@ -1,5 +1,6 @@
 #include "ui.h"
 #include <stdint.h>
+#include "app.h"
 
 static const uint32_t SK_COLORS[5] = {0x9AA6B2,0xE7C64B,0x39B36B,0x3B7DE0,0xD8503C};
 
@@ -7,6 +8,7 @@ static void sk_event(lv_event_t *e) {
     ui_softkey_cb_t cb = (ui_softkey_cb_t)lv_event_get_user_data(e);
     lv_obj_t *btn = lv_event_get_target_obj(e);
     int col = (int)(intptr_t)lv_obj_get_user_data(btn);
+    app_sound(SND_BLIP);
     if (cb) cb(col);
 }
 lv_obj_t *ui_screen(void) {
