@@ -90,7 +90,7 @@ void screen_settings_update(void) {
 void screen_settings_softkey(int col) {
     app_t *a = app();
     if (col==0) { app_goto(SCREEN_TIMER); }
-    else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); }
+    else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); screen_timer_apply_theme(); }
     else if (col==4) {
         pm_config_t c = { a->settings.focus_min, a->settings.short_min, a->settings.long_min, a->settings.long_every };
         if (a->pomo.state == PM_IDLE) pomodoro_init(&a->pomo, c); /* apply only when idle to avoid mid-session surprise */
