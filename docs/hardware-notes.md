@@ -76,7 +76,7 @@ heard**. When the user green-lights a flash:
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule
 (`github.com/freewili/wilibsp`). Project-specific *tuning defaults* — the LED
-brightness ceiling above, the audio amplitude cap below — are bench-comfort
+brightness ceiling and the audio amplitude cap above — are bench-comfort
 choices for this particular product, not BSP-level facts, so they belong here
 rather than in a driver header that other wilibsp consumers share. Genuine BSP
 *bugs*, by contrast, are in scope to fix upstream: a real RP2350-E5 DMA erratum
