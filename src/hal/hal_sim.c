@@ -1,4 +1,5 @@
 #include "hal.h"
+#include "dvi_view.h"
 #include <SDL2/SDL.h>
 #include <string.h>
 
@@ -72,4 +73,45 @@ bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
     return true;
 }
 
-hal_caps_t hal_caps(void) { hal_caps_t c = { .radio=true,.imu=true,.light=true,.audio=true,.buttons=true,.leds=true }; return c; }
+/* --- DVI: plain RAM, blitted into a second SDL window ---------------------
+   The stride is deliberately WIDER than the width so the simulator exercises
+   the same strided path as the device, where the slack holds HSTX commands. */
+#define SIM_DVI_STRIDE (DVI_VIEW_W + 64)
+static uint16_t s_dvi_px[DVI_VIEW_H * SIM_DVI_STRIDE];
+static SDL_Window   *s_dvi_win;
+static SDL_Renderer *s_dvi_ren;
+static SDL_Texture  *s_dvi_tex;
+static bool s_dvi_on = true;
+
+bool hal_dvi_surface(hal_dvi_surface_t *s) {
+    s->base = s_dvi_px; s->stride = SIM_DVI_STRIDE;
+    s->w = DVI_VIEW_W;  s->h = DVI_VIEW_H;
+    return true;
+}
+void hal_dvi_enable(bool on) { s_dvi_on = on; }
+
+void sim_dvi_create(void) {
+    s_dvi_win = SDL_CreateWindow("wilidoro DVI (640x480 region 480x240)",
+                                 SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+                                 DVI_VIEW_W, DVI_VIEW_H, SDL_WINDOW_SHOWN);
+    if (!s_dvi_win) return;
+    s_dvi_ren = SDL_CreateRenderer(s_dvi_win, -1, SDL_RENDERER_ACCELERATED);
+    if (!s_dvi_ren) return;
+    s_dvi_tex = SDL_CreateTexture(s_dvi_ren, SDL_PIXELFORMAT_RGB565,
+                                  SDL_TEXTUREACCESS_STREAMING, DVI_VIEW_W, DVI_VIEW_H);
+}
+
+void sim_dvi_present(void) {
+    if (!s_dvi_ren || !s_dvi_tex) return;
+    if (s_dvi_on) {
+        /* SDL takes a byte pitch; our stride is in uint16 elements. */
+        SDL_UpdateTexture(s_dvi_tex, NULL, s_dvi_px, SIM_DVI_STRIDE * (int)sizeof(uint16_t));
+    } else {
+        SDL_SetRenderDrawColor(s_dvi_ren, 0, 0, 0, 255);
+    }
+    SDL_RenderClear(s_dvi_ren);
+    if (s_dvi_on) SDL_RenderCopy(s_dvi_ren, s_dvi_tex, NULL, NULL);
+    SDL_RenderPresent(s_dvi_ren);
+}
+
+hal_caps_t hal_caps(void) { hal_caps_t c = { .radio=true,.imu=true,.light=true,.audio=true,.buttons=true,.leds=true,.dvi=true }; return c; }
