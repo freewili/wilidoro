@@ -47,30 +47,44 @@ whole number of sine cycles in that buffer, which quantizes pitch to
 the small speaker cannot reproduce them), so `SOUND_HZ_MIN = 440` in
 `src/app/sound.h` is a hard floor for the sound tables.
 
-### On-device listening checklist (pending — needs a flash session)
+### Hardware bring-up, 2026-07-25 — audio VERIFIED working
 
-Everything in Plan C2 is host-tested and build-verified; **nothing has been
-heard**. When the user green-lights a flash:
+Flashed and confirmed audible on real hardware. Two independent faults had to be
+cleared first, and both are worth knowing about:
 
-1. RTT shows `audio: codec ok` at boot (if it says `ABSENT`, `hal_caps().audio`
-   is false and all tones are suppressed — check `codec_nau88c10_input_ok()`,
-   which gates on the ADC path's `reg 0x02 == 0x0015` as well as the silicon
-   revision, and relax it to a revision-only probe if the mic path differs).
-2. Press **Start** on each of the three themes — the start chime should be
-   distinct per theme, with no click at note boundaries and no buzz.
-3. Set focus to 5 min, let it expire — the alarm should re-ring every 5 s until
-   **Dismiss**, then stop immediately.
-4. Settings → Volume 0 should be fully silent; 50 audibly quieter than 100.
-5. Enable the focus tick and confirm one quiet tick a minute, none while paused.
-6. After ~2 s of silence the speaker should go quiet with no residual hiss.
-7. Confirm the display still flushes smoothly while a tone plays (the I2S TX DMA
-   and the ST7796 flush share the DMA block but not an IRQ line).
-8. Listen across the rests in the Flip and Arcade alarms, and at the very end of
-   each sequence, for a residual tone or DC click:
-   `audio_i2s_duplex_play_stop()` clears the PIO TX FIFO on a rest (`hz == 0`)
-   or sequence end, and with autopull enabled an empty FIFO can leave the state
-   machine stalled holding its last sample rather than provably driving
-   mid-scale — this is only checkable by ear, not from source.
+1. **The speaker jumper must be connected.** With it off there is no sound at
+   all, whatever the firmware does. Check this first — it costs seconds, and it
+   masks every other symptom.
+2. **A BSP bug: an undrained I2S RX FIFO wedged the PIO state machine**, so every
+   note came out as a *click* instead of a tone. Fixed upstream in `wilibsp`
+   (`7b5a680`; symptom description corrected in `2e5ef86`) — see
+   `wilibsp/docs/hardware/facts.md`. wilidoro itself needed no code change, only
+   the submodule bump.
+
+Verified at boot: RTT reports `codec: rev(0x3F)=0x01A pm2(0x02)=0x015` then
+`audio: codec ok`, so `hal_caps().audio` is true and tones are enabled. (Note
+`codec_nau88c10_input_ok()` gates on the ADC/mic path as well as the silicon
+revision — it passes here, but it over-tests for a playback-only app.)
+
+Confirmed by ear: the per-theme sounds are good and the level is right —
+`TONE_AMP_CAP = 160` needed no adjustment. Confirmed by mic + Goertzel analysis:
+clean sustained notes at a sound-table frequency (787 Hz measured against the
+781.7 Hz the HAL emits for the 784 Hz table entry), magnitude ~1100 versus a
+silent-control floor of 0.0.
+
+**Fingerprint worth remembering:** *clicks instead of tones, with every codec
+register reading correct* means the PIO state machine is stalling, not that the
+codec is dead. Confirm by reading `PIO0->FDEBUG` (`0x50200008`): `RXSTALL` is
+bits 3:0 and sticky.
+
+Not yet exercised (needs a longer session; none is a blocker):
+
+- The focus-end alarm re-ringing every 5 s until **Dismiss**.
+- Volume 0 fully silent, 50 audibly quieter than 100.
+- The focus tick firing once a minute, and never while paused.
+- Whether the low notes (523/659 Hz) carry on this small speaker as well as the
+  784/1047 Hz ones. If they don't, pitch the tables higher rather than raising
+  `TONE_AMP_CAP` — a 0.5 W speaker has very little low end.
 
 ---
 
