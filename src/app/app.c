@@ -12,6 +12,10 @@
 static app_t s_app;
 app_t *app(void) { return &s_app; }
 
+/* WS2812s are extremely bright; cap the LED strip well below the panel-derived
+   brightness (auto-dim still scales it down further in a dark room). 0..255. */
+#define LED_BRIGHT_MAX 40
+
 static lv_obj_t *s_scr[3];
 static dim_state_t s_dim;
 static uint32_t s_next_lux;
@@ -51,7 +55,7 @@ static void tick_cb(lv_timer_t *t) {
         if (hal_lux(&lux)) {
             uint8_t pct = dim_apply(&s_dim, lux);
             hal_backlight(pct);
-            hal_led_brightness(dim_led_brightness(pct));
+            hal_led_brightness((uint8_t)((uint32_t)dim_led_brightness(pct) * LED_BRIGHT_MAX / 255));
         }
         s_next_lux = now + 500;
     }
