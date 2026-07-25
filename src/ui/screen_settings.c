@@ -3,9 +3,10 @@
 #include "app.h"
 #include "app_model.h"
 #include "screen_timer.h"
+#include "theme.h"
 #include <stdio.h>
 
-static lv_obj_t *s_scr, *s_list, *s_bar;
+static lv_obj_t *s_scr, *s_list, *s_bar, *s_title;
 static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beacon, *s_val_theme;
 
 static void refresh_values(void) {
@@ -58,9 +59,9 @@ static lv_obj_t *add_row(const char *name, int which) {
 
 lv_obj_t *screen_settings_create(void) {
     s_scr = ui_screen();
-    lv_obj_t *title = lv_label_create(s_scr); lv_label_set_text(title,"SETTINGS");
-    lv_obj_set_style_text_color(title, lv_color_hex(UI_MUTED),0);
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 12, 8);
+    s_title = lv_label_create(s_scr); lv_label_set_text(s_title,"SETTINGS");
+    lv_obj_set_style_text_color(s_title, lv_color_hex(UI_MUTED),0);
+    lv_obj_align(s_title, LV_ALIGN_TOP_LEFT, 12, 8);
 
     s_list = lv_obj_create(s_scr);
     lv_obj_set_size(s_list, 476, 236);
@@ -82,7 +83,9 @@ lv_obj_t *screen_settings_create(void) {
     return s_scr;
 }
 
-void screen_settings_update(void) { /* values refresh on edit; nothing periodic */ }
+void screen_settings_update(void) {
+    lv_obj_set_style_text_color(s_title, lv_color_hex(theme_get(app()->settings.theme)->accent), 0);
+}
 
 void screen_settings_softkey(int col) {
     app_t *a = app();

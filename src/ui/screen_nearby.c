@@ -2,16 +2,17 @@
 #include "ui.h"
 #include "app.h"
 #include "app_model.h"
+#include "theme.h"
 #include <stdio.h>
 #include <string.h>
 
-static lv_obj_t *s_scr, *s_list, *s_bar, *s_empty;
+static lv_obj_t *s_scr, *s_list, *s_bar, *s_empty, *s_title;
 
 lv_obj_t *screen_nearby_create(void) {
     s_scr = ui_screen();
-    lv_obj_t *title = lv_label_create(s_scr); lv_label_set_text(title,"NEARBY");
-    lv_obj_set_style_text_color(title, lv_color_hex(UI_MUTED),0);
-    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 12, 8);
+    s_title = lv_label_create(s_scr); lv_label_set_text(s_title,"NEARBY");
+    lv_obj_set_style_text_color(s_title, lv_color_hex(UI_MUTED),0);
+    lv_obj_align(s_title, LV_ALIGN_TOP_LEFT, 12, 8);
 
     s_list = lv_obj_create(s_scr);
     lv_obj_set_size(s_list, 476, 236);
@@ -31,6 +32,7 @@ lv_obj_t *screen_nearby_create(void) {
 }
 
 void screen_nearby_update(void) {
+    lv_obj_set_style_text_color(s_title, lv_color_hex(theme_get(app()->settings.theme)->accent), 0);
     /* rebuild the list from the neighbor table each tick */
     lv_obj_clean(s_list);
     neighbor_table_t *t = &app()->neighbors;
