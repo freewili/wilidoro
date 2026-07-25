@@ -30,6 +30,7 @@ add_executable(wilidoro_sim
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/app_model.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/app.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/timer_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../app/led_pattern.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_timer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_settings.c

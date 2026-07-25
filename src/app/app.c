@@ -4,12 +4,17 @@
 #include "screen_timer.h"
 #include "screen_settings.h"
 #include "screen_nearby.h"
+#include "dimming.h"
+#include "led_pattern.h"
+#include "timer_view.h"
 #include "lvgl.h"
 
 static app_t s_app;
 app_t *app(void) { return &s_app; }
 
 static lv_obj_t *s_scr[3];
+static dim_state_t s_dim;
+static uint32_t s_next_lux;
 
 static void route_softkey(int col) {
     switch (s_app.screen) {
@@ -40,11 +45,21 @@ static void tick_cb(lv_timer_t *t) {
     if (hal_beacon_rx(wire)) { beacon_msg_t m; if (beacon_unpack(wire, &m)) neighbor_upsert(&s_app.neighbors, &m, now); }
     neighbor_expire(&s_app.neighbors, now);
 
-    /* simple phase LED color (Plan C replaces with theme patterns) */
-    uint8_t r=0,g=0,bl=0;
-    if (s_app.pomo.state == PM_FOCUS)      { r=255; g=90; bl=40; }
-    else if (s_app.pomo.state==PM_BREAK_SHORT||s_app.pomo.state==PM_BREAK_LONG){ r=40; g=200; bl=180; }
-    for (int i=0;i<16;i++) hal_led_set(i, r, g, bl);
+    /* auto-dim: poll lux at ~2 Hz through the core dimming curve */
+    if (now >= s_next_lux) {
+        float lux;
+        if (hal_lux(&lux)) {
+            uint8_t pct = dim_apply(&s_dim, lux);
+            hal_backlight(pct);
+            hal_led_brightness(dim_led_brightness(pct));
+        }
+        s_next_lux = now + 500;
+    }
+    /* per-theme LED pattern */
+    timer_view_t lv = timer_view_make(&s_app.pomo, s_app.alarm_active, now);
+    led_rgb_t leds[LED_COUNT];
+    led_pattern_render(s_app.settings.theme, &lv, leds);
+    for (int i = 0; i < LED_COUNT; i++) hal_led_set(i, leds[i].r, leds[i].g, leds[i].b);
     hal_led_show();
 
     /* refresh the active screen */
@@ -66,6 +81,8 @@ void app_init(void) {
                         .long_min = s_app.settings.long_min, .long_every = s_app.settings.long_every };
     pomodoro_init(&s_app.pomo, cfg);
     neighbor_table_init(&s_app.neighbors);
+    dim_init(&s_dim, 100.0f);
+    s_next_lux = 0;
     s_app.screen = SCREEN_TIMER; s_app.alarm_active = false;
 
     s_scr[SCREEN_TIMER]    = screen_timer_create();
