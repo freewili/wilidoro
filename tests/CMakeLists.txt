@@ -47,3 +47,12 @@ target_include_directories(test_sound PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAK
 target_compile_options(test_sound PRIVATE -Wall -Wextra)
 target_link_libraries(test_sound m)
 add_test(NAME test_sound COMMAND test_sound)
+
+add_executable(test_dvi_view test_dvi_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/dvi_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/timer_view.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/core/pomodoro.c)
+target_include_directories(test_dvi_view PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CORE} ${CMAKE_CURRENT_SOURCE_DIR}/../src/app)
+target_compile_options(test_dvi_view PRIVATE -Wall -Wextra)
+target_link_libraries(test_dvi_view m)
+add_test(NAME test_dvi_view COMMAND test_dvi_view)
