@@ -61,7 +61,8 @@ wilidoro/
     core/                 pure logic — no LVGL, no hardware, host-unit-tested
       pomodoro.c          session state machine + config + session stats
       beacon.c            beacon packet encode/decode + neighbor table
-      gestures.c          IMU gesture classifier (flip, shake, pick-up)
+      gestures.c          IMU gesture classifier (flip, shake, pick-up) —
+                          replaced by tilt.c, see the note below
       dimming.c           lux → backlight/LED brightness curve
     ui/                   LVGL screens + themes (compiles on host and target)
       screens/            timer_face, settings, nearby
@@ -102,6 +103,10 @@ Classic cycle, all durations configurable in Settings:
   plain numbers.
 
 ## Gestures (BMI323, classified in `core/gestures.c`)
+
+*Superseded by `2026-07-25-wilidoro-C3-tilt-pause-design.md`: `core/gestures.c`
+was replaced by `core/tilt.c` and the five-gesture table below by a single
+tilt-to-pause rule. Kept here as a historical record.*
 
 | Gesture | Context | Action |
 |---|---|---|

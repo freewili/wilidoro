@@ -24,4 +24,5 @@ void   app_goto(app_screen_t s);     /* switch screens with a slide anim */
 void   app_sound(sound_id_t id);
 void   app_sound_stop(void);
 void   app_dvi_apply(void);          /* re-apply settings.dvi_on to the hardware */
+void   app_tilt_apply(void);         /* re-prime the tilt gate after tilt_pause changes */
 #endif

@@ -7,6 +7,7 @@ void app_settings_defaults(app_settings_t *s) {
     s->focus_min = 25; s->short_min = 5; s->long_min = 15; s->long_every = 4;
     s->volume = 70; s->focus_tick = false; s->beacon_on = true; s->theme = 0;
     s->dvi_on = true;
+    s->tilt_pause = false;
     memcpy(s->name, "WILI    ", APP_NAME_LEN);
 }
 void app_settings_adjust_focus(app_settings_t *s, int delta) {
@@ -22,6 +23,13 @@ void app_settings_adjust_volume(app_settings_t *s, int delta) {
     s->volume = (uint8_t)clampi((int)s->volume + delta * 10, 0, 100);
 }
 void app_settings_cycle_theme(app_settings_t *s) { s->theme = (uint8_t)((s->theme + 1) % 3); }
+
+bool tilt_gate_pauses(pm_state_t state) {
+    return state == PM_FOCUS;
+}
+bool tilt_gate_resumes(pm_state_t state, pm_state_t resume_state) {
+    return state == PM_PAUSED && resume_state == PM_FOCUS;
+}
 
 void neighbor_table_init(neighbor_table_t *t) {
     for (int i = 0; i < NEIGHBOR_MAX; i++) t->items[i].used = false;

@@ -9,6 +9,7 @@
 #include "led_pattern.h"
 #include "timer_view.h"
 #include "dvi_view.h"
+#include "tilt.h"
 #include "lvgl.h"
 
 static app_t s_app;
@@ -20,6 +21,7 @@ app_t *app(void) { return &s_app; }
 
 static lv_obj_t *s_scr[3];
 static dim_state_t s_dim;
+static tilt_state_t s_tilt;
 static uint32_t s_next_lux;
 static uint32_t s_next_tick_ms;    /* next focus tick (0 = none scheduled) */
 static uint32_t s_alarm_next_ms;   /* next alarm re-ring while un-dismissed */
@@ -61,12 +63,65 @@ void app_dvi_apply(void) {
     if (s_app.settings.dvi_on) dvi_dirty_reset(&s_dvi_dirty);
 }
 
+/* Re-prime the gate so enabling the feature adopts the board's current
+   orientation instead of reporting it as a fresh transition. Called both when
+   the toggle flips and when the Default softkey rewrites the settings struct. */
+void app_tilt_apply(void) { tilt_init(&s_tilt); }
+
 static void route_softkey(int col) {
     app_sound(SND_BLIP);
     switch (s_app.screen) {
         case SCREEN_TIMER:    screen_timer_softkey(col);    break;
         case SCREEN_SETTINGS: screen_settings_softkey(col); break;
         case SCREEN_NEARBY:   screen_nearby_softkey(col);   break;
+    }
+}
+
+/* 100 ms cadence, and the sole owner of I2C1 sensor reads: the OPT4001, the
+   BMI323 and the NAU88C10's control registers all share that bus, so one poller
+   keeps its traffic predictable instead of two independent ones interleaving.
+   The IMU is read every call -- 6 samples per TILT_HOLD_MS window, ~0.35 ms of
+   bus time each, so ~0.35 % duty -- and the light sensor every fifth. With
+   tilt_pause off the IMU is not touched at all. */
+static void sensor_cb(lv_timer_t *t) {
+    (void)t;
+    uint32_t now = hal_now_ms();
+
+    float ax, ay, az;
+    if (s_app.settings.tilt_pause && hal_imu(&ax, &ay, &az)) {
+        /* Edge-triggered deliberately: acting on the transition rather than on
+           the standing orientation is what stops a manual Pause taken while the
+           board is flat from being instantly undone. Breaks are never gated --
+           you are meant to walk away from those -- and idle is never started.
+           pomodoro_pause/resume are already guarded no-ops outside their valid
+           states; these state checks are what confine the rule to focus. */
+        switch (tilt_feed(&s_tilt, ax, ay, az, now)) {
+            case TILT_EV_LIFTED:
+                if (tilt_gate_pauses(s_app.pomo.state)) {
+                    pomodoro_pause(&s_app.pomo, now);
+                    app_sound(SND_BLIP);
+                }
+                break;
+            case TILT_EV_FLAT:
+                if (tilt_gate_resumes(s_app.pomo.state, s_app.pomo.resume_state)) {
+                    pomodoro_resume(&s_app.pomo, now);
+                    app_sound(SND_BLIP);
+                }
+                break;
+            case TILT_EV_NONE:
+                break;
+        }
+    }
+
+    /* auto-dim: poll lux at ~2 Hz through the core dimming curve */
+    if ((int32_t)(now - s_next_lux) >= 0) {
+        float lux;
+        if (hal_lux(&lux)) {
+            uint8_t pct = dim_apply(&s_dim, lux);
+            hal_backlight(pct);
+            hal_led_brightness((uint8_t)((uint32_t)dim_led_brightness(pct) * LED_BRIGHT_MAX / 255));
+        }
+        s_next_lux = now + 500;
     }
 }
 
@@ -113,16 +168,6 @@ static void tick_cb(lv_timer_t *t) {
     if (hal_beacon_rx(wire)) { beacon_msg_t m; if (beacon_unpack(wire, &m)) neighbor_upsert(&s_app.neighbors, &m, now); }
     neighbor_expire(&s_app.neighbors, now);
 
-    /* auto-dim: poll lux at ~2 Hz through the core dimming curve */
-    if (now >= s_next_lux) {
-        float lux;
-        if (hal_lux(&lux)) {
-            uint8_t pct = dim_apply(&s_dim, lux);
-            hal_backlight(pct);
-            hal_led_brightness((uint8_t)((uint32_t)dim_led_brightness(pct) * LED_BRIGHT_MAX / 255));
-        }
-        s_next_lux = now + 500;
-    }
     /* per-theme LED pattern */
     timer_view_t lv = timer_view_make(&s_app.pomo, s_app.alarm_active, now);
     /* Big-room DVI display: repaint only when the visible content changes. The
@@ -159,6 +204,7 @@ void app_init(void) {
     pomodoro_init(&s_app.pomo, cfg);
     neighbor_table_init(&s_app.neighbors);
     dim_init(&s_dim, 100.0f);
+    tilt_init(&s_tilt);
     dvi_dirty_reset(&s_dvi_dirty);
     s_next_lux = 0;
     s_app.screen = SCREEN_TIMER; s_app.alarm_active = false;
@@ -172,6 +218,7 @@ void app_init(void) {
 
     lv_timer_create(tick_cb, 200, NULL);
     lv_timer_create(sound_cb, 20, NULL);
+    lv_timer_create(sensor_cb, 100, NULL);
 
     app_dvi_apply();
 }

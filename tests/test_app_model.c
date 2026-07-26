@@ -11,6 +11,7 @@ TEST settings_defaults_are_classic_pomodoro(void) {
     ASSERT_EQ(0,  s.theme);
     ASSERT(s.beacon_on);
     ASSERT(s.dvi_on);
+    ASSERT_FALSE(s.tilt_pause);   /* opt-in: setting the board down must not surprise you */
     PASS();
 }
 
@@ -96,6 +97,33 @@ TEST upsert_evicts_oldest_when_full(void) {
     PASS();
 }
 
+TEST tilt_gate_pauses_only_focus(void) {
+    ASSERT_FALSE(tilt_gate_pauses(PM_IDLE));
+    ASSERT(tilt_gate_pauses(PM_FOCUS));
+    ASSERT_FALSE(tilt_gate_pauses(PM_BREAK_SHORT));
+    ASSERT_FALSE(tilt_gate_pauses(PM_BREAK_LONG));
+    ASSERT_FALSE(tilt_gate_pauses(PM_ALARM));
+    ASSERT_FALSE(tilt_gate_pauses(PM_PAUSED));
+    PASS();
+}
+
+TEST tilt_gate_resumes_only_a_focus_pause(void) {
+    /* The load-bearing case: a break paused manually must never be resumed by
+       setting the board down flat. */
+    ASSERT(tilt_gate_resumes(PM_PAUSED, PM_FOCUS));
+    ASSERT_FALSE(tilt_gate_resumes(PM_PAUSED, PM_BREAK_SHORT));
+    ASSERT_FALSE(tilt_gate_resumes(PM_PAUSED, PM_BREAK_LONG));
+    ASSERT_FALSE(tilt_gate_resumes(PM_PAUSED, PM_IDLE));
+    ASSERT_FALSE(tilt_gate_resumes(PM_PAUSED, PM_ALARM));
+    /* Not paused at all -- resume_state is irrelevant, this must stay false. */
+    ASSERT_FALSE(tilt_gate_resumes(PM_IDLE, PM_FOCUS));
+    ASSERT_FALSE(tilt_gate_resumes(PM_FOCUS, PM_FOCUS));
+    ASSERT_FALSE(tilt_gate_resumes(PM_BREAK_SHORT, PM_FOCUS));
+    ASSERT_FALSE(tilt_gate_resumes(PM_BREAK_LONG, PM_FOCUS));
+    ASSERT_FALSE(tilt_gate_resumes(PM_ALARM, PM_FOCUS));
+    PASS();
+}
+
 GREATEST_MAIN_DEFS();
 int main(int argc, char **argv) {
     GREATEST_MAIN_BEGIN();
@@ -106,5 +134,7 @@ int main(int argc, char **argv) {
     RUN_TEST(upsert_adds_then_updates_by_name);
     RUN_TEST(expire_drops_stale_keeps_fresh);
     RUN_TEST(upsert_evicts_oldest_when_full);
+    RUN_TEST(tilt_gate_pauses_only_focus);
+    RUN_TEST(tilt_gate_resumes_only_a_focus_pause);
     GREATEST_MAIN_END();
 }
