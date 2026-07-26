@@ -108,7 +108,7 @@ refuses to sync.
 `target_compile_definitions(freewili2_bsp PUBLIC HSTX_VID_W_MAX=480 HSTX_VID_H_MAX=240)`
 in the root `CMakeLists.txt`. Those macros size `framebuf[]` at **compile** time —
 passing a smaller `vid_h` to `hstx_dvi_init()` does not shrink it. The BSP default
-480×320 is 320 KB, which with our other ~187 KB of BSS leaves ~13 KB for stack and
+480×320 is 320 KB, which with our other ~187 KB of BSS leaves ~5 KB for stack and
 heap and will not fit. (The `#ifndef` guards that make them overridable were added
 upstream in `wilibsp`.)
 
