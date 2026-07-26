@@ -16,6 +16,7 @@ endfunction()
 add_core_test(test_smoke)
 add_core_test(test_pomodoro ${CORE}/pomodoro.c)
 add_core_test(test_beacon ${CORE}/beacon.c)
+add_core_test(test_beacon_rx ${CORE}/beacon_rx.c ${CORE}/beacon.c)
 add_core_test(test_tilt ${CORE}/tilt.c)
 add_core_test(test_dimming ${CORE}/dimming.c)
 
