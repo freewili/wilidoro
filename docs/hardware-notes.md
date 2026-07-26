@@ -317,7 +317,12 @@ None of this has been run. **Ask before flashing.**
 4. **The LEDs still animate** with the radio live (PIO1 alongside PIO2).
 5. With **Beacon** on, the ~136 ms transmit hitch every 20 s is not visibly
    disruptive to the countdown, and never audibly stretches a chime.
-6. With **Beacon** off, no transmit happens at all.
+6. With **Beacon** off (the default), there are no *periodic* transmits. The
+   boot self-test still fires once regardless of the setting
+   (`radio_loopback_selftest` runs from `hal_init`, before `app_init` reads
+   any setting at all) — one `beacon: loopback` frame at every boot, off or
+   on, is expected and is not a bug. Beacon off just means no further
+   transmit ever follows that one.
 7. Auto-dim, touch and the tilt gate all still behave — the transmit stall must
    not break the 100 ms `sensor_cb` cadence beyond a skipped sample.
 8. **Conditional on a second transmitter.** A FreeWili One is also on the bench,

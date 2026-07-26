@@ -274,6 +274,20 @@ bool hal_lux(float *lux) { return s_light && opt4001_read(lux); }
    post-transmit flush, the loopback self-test, and hal_beacon_rx. */
 #define RX_DRAIN_CHUNK 128u
 
+/* Drain the PIO2 capture ring dry, discarding every word, in a bounded loop
+   (so a somehow-still-full ring can't spin this forever). Used wherever
+   leftover ring contents must not reach the framer: hal_beacon_tx's
+   post-transmit anti-echo drain, and the loopback self-test's pre-transmit
+   (stale debris) and post-test (its own LOOPBACK echo) drains. Always called
+   as a sibling of beacon_tx_raw() -- before or after it, never nested inside
+   its call chain -- see the stack-peak comment on beacon_tx_raw's durs[]. */
+static void drain_ring_dry(void) {
+    for (int rounds = 0; rounds < 64; rounds++) {
+        uint32_t discard[RX_DRAIN_CHUNK];
+        if (gdo_capture_drain(discard, RX_DRAIN_CHUNK) < RX_DRAIN_CHUNK) break;
+    }
+}
+
 /* The actual bit-banging, shared by hal_beacon_tx and the loopback self-test
    below: encode and blast the wire frame out GDO0, then return the radio to
    listening. Deliberately does NOT touch the capture ring or the framer --
@@ -281,13 +295,22 @@ bool hal_lux(float *lux) { return s_light && opt4001_read(lux); }
    this produces (discarded vs. decoded), so that decision lives in the two
    callers, not here. Returns false (nothing sent) if the frame was empty. */
 static bool beacon_tx_raw(const uint8_t wire[BEACON_WIRE_LEN]) {
-    /* durs[] (1104 B) plus beacon_ook_encode's own uint8_t hb[272] stack frame
-       peak around 2.0 KB on the boot path (hal_init -> radio_loopback_selftest,
-       with its own drain buffer, -> here -> beacon_ook_encode) against a
-       .stack_dummy of 2048 B. Safe only by accident: .scratch_x/.scratch_y are
-       both 0 B in this build, so the stack has ~8 KB of unused room below it
-       before hitting anything real. Not a designed margin -- re-check this if
-       either scratch region ever gets used. */
+    /* durs[] here (1104 B) plus beacon_ook_encode's own uint8_t hb[272] add up
+       to 1376 B on top of whichever function calls beacon_tx_raw(). The worst
+       boot-path caller is radio_loopback_selftest: its own round-loop
+       durs[RX_DRAIN_CHUNK] (512 B) plus a few small locals (sent/got/m/ints)
+       contribute roughly another 570 B, for a worst-case peak around 1.9 KB
+       against a .stack_dummy of 2048 B -- worst-case because it assumes GCC
+       does NOT share stack slots between that round-loop buffer and anything
+       else in the same function. drain_ring_dry()'s own 512 B buffer is NOT
+       part of this peak: it is only ever called as a sibling of
+       beacon_tx_raw() (before or after it), never nested inside this call
+       chain, so the two frames are never concurrently on the stack -- if that
+       ever changes, re-derive this figure. Safe only by accident regardless:
+       .scratch_x/.scratch_y are both 0 B in this build, so the stack has
+       ~8 KB of unused room below it before hitting anything real. Not a
+       designed margin -- re-check this if either scratch region ever gets
+       used. */
     uint32_t durs[BEACON_MAX_DURS];
     bool start_level = false;
     size_t n = beacon_ook_encode(wire, durs, BEACON_MAX_DURS, &start_level);
@@ -324,10 +347,7 @@ void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) {
        the burst's edges arrived with no real trailing gap (that is the whole
        F1 problem) and would otherwise corrupt a partially-assembled peer
        segment that was open when we started transmitting. */
-    for (int rounds = 0; rounds < 64; rounds++) {
-        uint32_t discard[RX_DRAIN_CHUNK];
-        if (gdo_capture_drain(discard, RX_DRAIN_CHUNK) < RX_DRAIN_CHUNK) break;
-    }
+    drain_ring_dry();
     beacon_rx_init(&s_brx);
 }
 
@@ -365,10 +385,7 @@ static void radio_loopback_selftest(void) {
     /* beacon_rx_init only resets the framer struct, not gdo_capture's own
        tail -- drain any pre-existing capture-ring debris now, before we
        transmit, or it prepends to the segment under test and can corrupt it. */
-    for (int rounds = 0; rounds < 64; rounds++) {
-        uint32_t discard[RX_DRAIN_CHUNK];
-        if (gdo_capture_drain(discard, RX_DRAIN_CHUNK) < RX_DRAIN_CHUNK) break;
-    }
+    drain_ring_dry();
 
     beacon_tx_raw(sent);                     /* also returns the radio to listening */
 
@@ -397,10 +414,7 @@ static void radio_loopback_selftest(void) {
        sitting there and would later be decoded by hal_beacon_rx() as a
        "LOOPBACK" neighbour -- the same self-reception bug F2 fixes for
        normal operation, just via this test instead. */
-    for (int rounds = 0; rounds < 64; rounds++) {
-        uint32_t discard[RX_DRAIN_CHUNK];
-        if (gdo_capture_drain(discard, RX_DRAIN_CHUNK) < RX_DRAIN_CHUNK) break;
-    }
+    drain_ring_dry();
 }
 
 /* Drain the PIO2 capture ring fully and feed the framer. The loop matters: during

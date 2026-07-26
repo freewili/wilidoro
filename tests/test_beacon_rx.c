@@ -188,12 +188,21 @@ static int find_wire_with_parity(int want_odd) {
 /* This is the test that pins F1: beacon_rx_push alone must NEVER decode a
    hardware-shaped capture (no synthetic closing gap ever appears in it), and
    beacon_rx_flush must decode that exact same stream. No ASSERT* here -- this
-   helper is not a TEST, so it hands results back for the callers to assert. */
+   helper is not a TEST, so it hands results back for the callers to assert.
+
+   *preamble_starts_high hands back beacon_ook_encode's own `start_level`, so
+   the caller can assert it. capture_of_burst's "last run high iff n is odd"
+   rule is only true because the preamble always starts high (build_halfbits
+   always emits {1,0} first) -- silently baking that assumption in here would
+   let a future change to the preamble polarity quietly pin the wrong parity
+   instead of failing loudly. */
 static void modelled_capture_case(uint8_t completed, bool *no_flush_decodes,
-                                   bool *flush_decodes, bool *flush_correct) {
+                                   bool *flush_decodes, bool *flush_correct,
+                                   bool *preamble_starts_high) {
     uint8_t wire[BEACON_WIRE_LEN]; make_wire(wire, "ALEX    ", BST_FOCUS, 17, completed);
     uint32_t durs[BEACON_MAX_DURS]; bool lvl = false;
     size_t n = beacon_ook_encode(wire, durs, BEACON_MAX_DURS, &lvl);
+    *preamble_starts_high = lvl;
 
     uint32_t ring[BEACON_MAX_DURS + 8];
     size_t rn = capture_of_burst(durs, n, 500000u, ring);
@@ -216,8 +225,9 @@ static void modelled_capture_case(uint8_t completed, bool *no_flush_decodes,
 TEST modelled_capture_decodes_only_with_a_flush_odd_run_count(void) {
     int done = find_wire_with_parity(1);
     ASSERT(done >= 0);
-    bool no_flush = true, flush = false, correct = false;
-    modelled_capture_case((uint8_t)done, &no_flush, &flush, &correct);
+    bool no_flush = true, flush = false, correct = false, starts_high = false;
+    modelled_capture_case((uint8_t)done, &no_flush, &flush, &correct, &starts_high);
+    ASSERT(starts_high);   /* capture_of_burst's parity rule assumes this */
     ASSERT_FALSE(no_flush);
     ASSERT(flush);
     ASSERT(correct);
@@ -227,8 +237,9 @@ TEST modelled_capture_decodes_only_with_a_flush_odd_run_count(void) {
 TEST modelled_capture_decodes_only_with_a_flush_even_run_count(void) {
     int done = find_wire_with_parity(0);
     ASSERT(done >= 0);
-    bool no_flush = true, flush = false, correct = false;
-    modelled_capture_case((uint8_t)done, &no_flush, &flush, &correct);
+    bool no_flush = true, flush = false, correct = false, starts_high = false;
+    modelled_capture_case((uint8_t)done, &no_flush, &flush, &correct, &starts_high);
+    ASSERT(starts_high);   /* capture_of_burst's parity rule assumes this */
     ASSERT_FALSE(no_flush);
     ASSERT(flush);
     ASSERT(correct);
