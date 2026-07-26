@@ -149,6 +149,55 @@ connected.
 7. With DVI previously toggled off, press Settings → Default and confirm the
    output returns (regression test for the Default-desyncs-`dvi_on` fix).
 
+## Tilt to pause — thresholds and hold
+
+*Not yet hardware-verified. The values below are reasoned defaults, chosen at
+the desk and confirmed only in the simulator.*
+
+The board lying face-up and level is the running orientation; lift or tilt it and
+a focus session pauses. `src/core/tilt.c` thresholds `az/‖a‖` — the cosine of the
+tilt away from level — rather than raw `az`, because a 2 g jolt can push raw `az`
+past the flat threshold while the board is nowhere near level.
+
+| tunable | value | meaning |
+|---|---|---|
+| `TILT_FLAT_COS` | 0.87 | enter flat, within ~29.5° of level |
+| `TILT_LIFT_COS` | 0.77 | leave flat, beyond ~39.7° |
+| `TILT_HOLD_MS` | 600 | the new zone must persist this long to count |
+| `TILT_MAG_MIN` | 0.30 | below this `‖a‖` the sample is discarded |
+
+The 10 Hz `sensor_cb` gives 6 samples per hold window. These are bench-comfort
+choices in the same spirit as `LED_BRIGHT_MAX = 40` and `TONE_AMP_CAP = 160`, and
+they belong here rather than upstream in the BSP. If a lift is missed, lower
+`TILT_LIFT_COS`; if the desk shaking pauses a session, raise `TILT_HOLD_MS`.
+
+**I2C1 is shared** by the BMI323 (0x68), the OPT4001, and the NAU88C10's control
+registers. A single 100 ms `sensor_cb` in `src/app/app.c` owns every sensor read
+on it — the IMU each call, lux every fifth — rather than two independent pollers.
+All of it runs from LVGL timers on core 0, so this is a time-budget arrangement,
+not a lock. A `bmi323_read` is 1 byte written plus 14 read, ~0.35 ms of bus time.
+With the setting off, `hal_imu` is never called and the bus sees no extra traffic.
+
+### On-device tilt checklist
+
+None of this has been run. **Ask before flashing.**
+
+1. RTT at boot reports `bmi323: chipid=0x0043 ok`. If it says `??`, the part did
+   not answer and Settings will show `no imu` — check that before suspecting the
+   gate logic.
+2. Settings shows **Tilt to pause** as `off`, and switching it to `on` sticks.
+3. With it on and a focus session running, lifting the board off the desk pauses
+   within ~600 ms and blips.
+4. Setting it back down flat resumes from the same remaining time, not from the
+   top.
+5. A manual Pause taken while the board is flat is **not** undone by the gate.
+6. Resting it on a shallow stand (~35°, inside the dead band) neither pauses nor
+   resumes, and does not oscillate.
+7. With the setting off, tilting does nothing at all.
+8. A break is never paused by tilting, only focus.
+9. Auto-dim still tracks the room after the lux poll moved from `tick_cb` into
+   `sensor_cb` — cover the sensor and confirm the backlight and LEDs drop.
+
 ---
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule
