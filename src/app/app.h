@@ -23,4 +23,5 @@ void   app_goto(app_screen_t s);     /* switch screens with a slide anim */
    already sounding. app_sound_stop() silences immediately and idles the codec. */
 void   app_sound(sound_id_t id);
 void   app_sound_stop(void);
+void   app_dvi_apply(void);          /* re-apply settings.dvi_on to the hardware */
 #endif

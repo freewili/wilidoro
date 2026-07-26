@@ -15,6 +15,7 @@ typedef struct {
     bool     beacon_on;
     char     name[APP_NAME_LEN];  /* space-padded ASCII, not NUL-terminated */
     uint8_t  theme;        /* 0..2; activated in Plan B2 */
+    bool     dvi_on;       /* big-room DVI display */
 } app_settings_t;
 
 void app_settings_defaults(app_settings_t *s);

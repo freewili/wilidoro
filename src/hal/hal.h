@@ -31,6 +31,15 @@ void hal_audio_idle(void);
 /* Backlight 0..100. */
 void hal_backlight(uint8_t pct);
 
+/* DVI big-room display (Plan DVI). The surface is a strided native-endian RGB565
+   framebuffer: row y starts at base + (size_t)y*stride and is w pixels wide.
+   stride MAY EXCEED w -- the slack holds HSTX scanout commands on the device.
+   Geometry must match DVI_VIEW_W/DVI_VIEW_H in src/app/dvi_view.h and the
+   HSTX_VID_*_MAX compile definitions in the root CMakeLists.txt. */
+typedef struct { uint16_t *base; int stride, w, h; } hal_dvi_surface_t;
+bool hal_dvi_surface(hal_dvi_surface_t *s);
+void hal_dvi_enable(bool on);
+
 /* Sensors (Plan C; Plan B device returns false). */
 bool hal_imu(float *ax, float *ay, float *az);
 bool hal_lux(float *lux);
@@ -40,6 +49,6 @@ void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]);
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]);
 
 /* Which features are live this build (crossed-out icons on the timer face). */
-typedef struct { bool radio, imu, light, audio, buttons, leds; } hal_caps_t;
+typedef struct { bool radio, imu, light, audio, buttons, leds, dvi; } hal_caps_t;
 hal_caps_t hal_caps(void);
 #endif

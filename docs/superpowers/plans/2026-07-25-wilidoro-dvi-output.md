@@ -100,7 +100,7 @@ In the root `CMakeLists.txt`, immediately after the `add_subdirectory(wilibsp/bs
 # Size the HSTX DVI framebuffer for wilidoro's 480x240 focus display. PUBLIC so the
 # app and the BSP agree. The buffer is 200 + H*(11 + W/2) + (480-H)*8 dwords:
 # 480x240 = 244 KB, which fits alongside our ~187 KB of BSS. The BSP default
-# 480x320 is 320 KB and would leave ~13 KB for stack + heap.
+# 480x320 is 320 KB and would leave ~5 KB for stack + heap.
 target_compile_definitions(freewili2_bsp PUBLIC HSTX_VID_W_MAX=480 HSTX_VID_H_MAX=240)
 ```
 
@@ -1057,7 +1057,7 @@ refuses to sync.
 `target_compile_definitions(freewili2_bsp PUBLIC HSTX_VID_W_MAX=480 HSTX_VID_H_MAX=240)`
 in the root `CMakeLists.txt`. Those macros size `framebuf[]` at **compile** time —
 passing a smaller `vid_h` to `hstx_dvi_init()` does not shrink it. The BSP default
-480×320 is 320 KB, which with our other ~187 KB of BSS leaves ~13 KB for stack and
+480×320 is 320 KB, which with our other ~187 KB of BSS leaves ~5 KB for stack and
 heap and will not fit. (The `#ifndef` guards that make them overridable were added
 upstream in `wilibsp`.)
 

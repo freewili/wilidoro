@@ -91,6 +91,64 @@ Not yet exercised (needs a longer session; none is a blocker):
   sequence end. Only the Flip and Arcade alarms have rests, and neither has
   been exercised yet, so this is still open.
 
+## DVI output — region size and pixel clock
+
+*Hardware-verified 2026-07-25: picture confirmed on a mini projector (HDMI input)
+at the board default 250 MHz — i.e. at the 0.7 %-low 25.0 MHz pixel clock, with
+no clock change needed.*
+
+The RP2350 HSTX block drives 640×480p60 DVI on GPIO 12–19. Wilidoro shows a
+room-readable focus view there — state word, huge `MM:SS`, session dots — in the
+active theme's colors. The LCD is unaffected and remains the control surface.
+
+**Pixel clock is `clk_sys/10`.** At the board default 250 MHz that is 25.0 MHz —
+0.7 % below the 25.175 MHz standard, and **confirmed on hardware to be within
+tolerance**: a mini projector synced and displayed the view at 25.0 MHz with no
+clock change. This keeps the NAU88C10 audio at exactly the 16009 Hz it was
+verified at. `board_init_clk(252000)` would give
+an exact 25.2 MHz at the cost of ~0.8 % audio pitch; the sample rate is now
+derived from `clk_sys` at runtime, so that switch is safe to make if a monitor
+refuses to sync.
+
+**The region is 480×240 = 244 KB**, set by
+`target_compile_definitions(freewili2_bsp PUBLIC HSTX_VID_W_MAX=480 HSTX_VID_H_MAX=240)`
+in the root `CMakeLists.txt`. Those macros size `framebuf[]` at **compile** time —
+passing a smaller `vid_h` to `hstx_dvi_init()` does not shrink it. The BSP default
+480×320 is 320 KB, which with our other ~187 KB of BSS leaves ~5 KB for heap
+and will not fit. (The `#ifndef` guards that make them overridable were added
+upstream in `wilibsp`.)
+
+**The framebuffer is strided**: rows are separated by HSTX scanout command words,
+so row `y` starts at `hstx_dvi_video_base() + y*hstx_dvi_video_stride()` and is
+only `hstx_dvi_video_w()` pixels wide. Writing past the width corrupts the scanout
+program. `src/app/dvi_view.c` funnels every write through one clipped `fill_rect`,
+and its unit tests render into a surface whose slack columns hold a sentinel value
+to prove nothing escapes.
+
+### On-device DVI checklist
+
+Item 1 is **DONE** (2026-07-25). The rest still need a session with the display
+connected.
+
+1. **PASS** — a mini projector on HDMI synced and showed the view at 25.0 MHz,
+   i.e. at the board default 250 MHz with no clock change. If some other display
+   refuses, `board_init_clk(252000)` gives an exact 25.2 MHz; confirm the chimes
+   still sound correct afterwards, since that moves fs to 16137 Hz.
+   **Diagnostic note:** an earlier "no sync" at this same clock turned out to be
+   an unplugged HDMI connector, and cost a wasted round-trip through 252 MHz.
+   Before drawing any conclusion from a blank display, confirm the cable is
+   seated at both ends and the input is selected — the same class of mistake as
+   the speaker jumper in the audio section above.
+2. The countdown is legible across a room and no digits are clipped.
+3. Switching theme on the LCD recolors the DVI output live.
+4. The Settings "DVI output" toggle blanks and restores it.
+5. Audio still plays correctly with DVI scanout running — the scanout DMA adds
+   continuous memory-bus traffic alongside the audio TX DMA and the blocking
+   ST7796 flush.
+6. The LCD refresh is not visibly degraded by that same contention.
+7. With DVI previously toggled off, press Settings → Default and confirm the
+   output returns (regression test for the Default-desyncs-`dvi_on` fix).
+
 ---
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule
@@ -98,10 +156,12 @@ Not yet exercised (needs a longer session; none is a blocker):
 brightness ceiling and the audio amplitude cap above — are bench-comfort
 choices for this particular product, not BSP-level facts, so they belong here
 rather than in a driver header that other wilibsp consumers share. Genuine BSP
-*bugs*, by contrast, are in scope to fix upstream: a real RP2350-E5 DMA erratum
-in `audio_i2s_duplex_play_stop()` was found during this plan, fixed in wilibsp
-(`849ec60`, `fix(audio): use dma_channel_cleanup() to stop chained I2S TX DMA`),
-pushed to `github.com/freewili/wilibsp` master, and this repo's submodule pin
-was bumped to it (`833c1bd`) — that commit pair is the template for any future
-BSP-bug fix. Ask before opening upstream PRs for new tuning-style notes like
-the ones in this file, but bugs get fixed upstream as a matter of course.
+*bugs*, by contrast, are in scope to fix upstream: two examples from this plan
+show the pattern. An RP2350-E5 DMA erratum in `audio_i2s_duplex_play_stop()`
+was fixed in wilibsp (`849ec60`, `fix(audio): use dma_channel_cleanup() to stop
+chained I2S TX DMA`), and the lack of HSTX framebuffer sizing was fixed in
+`781208b` (`feat(dvi): let apps size the HSTX framebuffer`); both were pushed to
+`github.com/freewili/wilibsp` master and this repo's submodule pins were bumped
+to them (`833c1bd` and `092f5ca` respectively) — that pattern is the template
+for any future BSP-bug fix. Ask before opening upstream PRs for new tuning-style
+notes like the ones in this file, but bugs get fixed upstream as a matter of course.

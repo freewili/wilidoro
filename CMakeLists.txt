@@ -16,6 +16,11 @@ add_subdirectory(third_party/lvgl)
 
 # wilibsp BSP static library
 add_subdirectory(wilibsp/bsp)
+# Size the HSTX DVI framebuffer for wilidoro's 480x240 focus display. PUBLIC so the
+# app and the BSP agree. The buffer is 200 + H*(11 + W/2) + (480-H)*8 dwords:
+# 480x240 = 244 KB, which fits alongside our ~187 KB of BSS. The BSP default
+# 480x320 is 320 KB and would leave ~5 KB for heap.
+target_compile_definitions(freewili2_bsp PUBLIC HSTX_VID_W_MAX=480 HSTX_VID_H_MAX=240)
 
 add_executable(wilidoro
     src/target/main.c
@@ -31,6 +36,7 @@ add_executable(wilidoro
     src/app/timer_view.c
     src/app/led_pattern.c
     src/app/sound.c
+    src/app/dvi_view.c
     src/ui/ui.c
     src/ui/screen_timer.c
     src/ui/screen_settings.c
