@@ -10,11 +10,13 @@
 #include "radio/cc1101.h"
 #include "radio/ook_tx.h"
 #include "radio/gdo_capture.h"
+#include "beacon_rx.h"
 #include "platform/ioexp.h"
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 #include "platform/diag.h"
+#include <string.h>
 
 /* uartkbd_btn_t (uartkbd_parse.h) does NOT share hal_btn_t's (hal.h) d-pad
  * order: uartkbd numbers NAV_CENTER before NAV_UP/DOWN/LEFT/RIGHT (5..9),
@@ -139,6 +141,7 @@ static bool s_imu;
    rather than in core/beacon.h beside the wire format. */
 #define BEACON_HZ 433920000u
 static bool s_radio;
+static beacon_rx_t s_brx;
 
 /* ---------------- DVI --------------------------------------------------
  * 640x480p60 over the HSTX block (GPIO 12-19). The stored video region is
@@ -164,6 +167,10 @@ static void radio_listen(void) {
     cc1101_monitor_rx(BEACON_HZ, CC1101_MOD_ASK_OOK);
 }
 
+/* Defined below, next to hal_beacon_tx; forward-declared so hal_init (which
+   comes first in the file) can call it at bring-up. */
+static void radio_loopback_selftest(void);
+
 void hal_init(void) {
     uartkbd_init();
     ws2812_init(pio1, (uint)pio_claim_unused_sm(pio1, true), PIN_LED_DATA);
@@ -185,6 +192,7 @@ void hal_init(void) {
         gdo_capture_init();
         gdo_capture_start();
         radio_listen();
+        radio_loopback_selftest();
     }
     DIAG("radio: cc1101 %s\n", s_radio ? "ok" : "ABSENT (beacon disabled)");
 
@@ -279,7 +287,66 @@ void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) {
     gdo_capture_attach_pin();                    /* undo the SIO takeover */
     radio_listen();
 }
-bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }               /* Plan C */
+
+/* One-shot self-test, run at bring-up. PIO2 samples the GDO0 pad even while
+   ook_tx_send drives it as an SIO output -- wilibsp's hello_cc1101 sends 24
+   pulses and drains exactly 24 edges -- so transmitting our own beacon and
+   draining the capture exercises the whole chain: pack -> ook_encode -> ook_tx
+   timing -> PIO2/DMA capture -> framer -> ook_decode -> unpack.
+   Everything except the RF air path and the CC1101's own demodulator, neither of
+   which has ever been demonstrated on this hardware by anyone.
+   It fails closed: if the pad-sampling assumption does not hold, the decode
+   simply fails and the log says so. It cannot produce a false pass. */
+static void radio_loopback_selftest(void) {
+    if (!s_radio) return;
+    beacon_msg_t m;
+    memcpy(m.name, "LOOPBACK", BEACON_NAME_LEN);
+    m.state = BST_FOCUS; m.minutes_left = 42; m.completed = 7;
+    uint8_t sent[BEACON_WIRE_LEN];
+    beacon_pack(&m, sent);
+
+    beacon_rx_init(&s_brx);
+    hal_beacon_tx(sent);                     /* also returns the radio to listening */
+
+    /* A gap first, so the framer knows the following run is high. */
+    uint8_t got[BEACON_WIRE_LEN];
+    bool ok = false;
+    (void)beacon_rx_push(&s_brx, BEACON_GAP_US * 4u, got);
+    for (int round = 0; round < 8 && !ok; round++) {
+        uint32_t durs[128];
+        uint32_t n = gdo_capture_drain(durs, 128);
+        for (uint32_t i = 0; i < n && !ok; i++)
+            if (beacon_rx_push(&s_brx, durs[i], got)) ok = true;
+        if (!ok) sleep_ms(5);
+    }
+    if (ok) ok = (memcmp(sent, got, BEACON_WIRE_LEN) == 0);
+    DIAG("beacon: loopback %s\n", ok ? "ok" : "FAILED");
+
+    beacon_rx_init(&s_brx);                  /* discard self-test state */
+}
+
+#define RX_DRAIN_CHUNK 128u
+
+/* Drain the PIO2 capture ring fully and feed the framer. The loop matters: during
+   a burst the line carries up to ~2000 edges/s, so a single fixed-size drain can
+   fall behind and lose the middle of a frame. Draining until a short read means
+   the chunk size stops mattering.
+
+   Returning early on a decoded frame leaves the remaining edges in the ring, so
+   they are not lost -- only the tail of the current chunk is dropped, and the
+   next gap re-arms the framer past it. Do not add a pending-duration queue: a
+   frame takes ~136 ms to transmit while this is polled every 100 ms, so two
+   complete frames in one chunk is impossible. */
+bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
+    if (!s_radio) return false;
+    uint32_t durs[RX_DRAIN_CHUNK];
+    for (;;) {
+        uint32_t n = gdo_capture_drain(durs, RX_DRAIN_CHUNK);
+        for (uint32_t i = 0; i < n; i++)
+            if (beacon_rx_push(&s_brx, durs[i], wire)) return true;
+        if (n < RX_DRAIN_CHUNK) return false;   /* ring is empty */
+    }
+}
 
 bool hal_dvi_surface(hal_dvi_surface_t *s) {
     if (!s_dvi) return false;
