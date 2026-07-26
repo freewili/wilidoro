@@ -90,6 +90,67 @@ TEST skip_focus_breaks_streak_and_idles(void) {
     PASS();
 }
 
+/* --- 49-day rollover ---------------------------------------------------------
+   hal_now_ms() is a uint32_t millisecond counter, so it wraps every ~49.7 days.
+   A phase started shortly before the wrap has a phase_end_ms that wraps with it,
+   landing *numerically below* now_ms. The naive `now_ms >= phase_end_ms` reads
+   that as "already expired" and ends the phase on its very first tick. Every
+   deadline in this project therefore uses the wrap-safe difference form,
+   `(int32_t)(now - deadline) >= 0`, which stays correct across the boundary. */
+
+#define WRAP_START ((uint32_t)(0u - MIN(1)))   /* 60 s before the counter wraps */
+
+TEST focus_survives_the_uint32_rollover(void) {
+    pomodoro_t p; pomodoro_init(&p, CFG);
+    pomodoro_start_focus(&p, WRAP_START);
+    /* phase_end_ms has wrapped to a small value while now_ms is still huge. */
+    ASSERT_EQ(MIN(25), pomodoro_remaining_ms(&p, WRAP_START));
+    ASSERT_EQ(PM_EV_NONE, pomodoro_tick(&p, WRAP_START));
+    ASSERT_EQ(PM_FOCUS, p.state);
+
+    /* 90 s in, i.e. 30 s *past* the wrap: still running, with the right left. */
+    uint32_t after = WRAP_START + MIN(1) + 30000u;      /* == 30000 */
+    ASSERT_EQ(PM_EV_NONE, pomodoro_tick(&p, after));
+    ASSERT_EQ(PM_FOCUS, p.state);
+    ASSERT_EQ(MIN(25) - 90000u, pomodoro_remaining_ms(&p, after));
+
+    /* And it still ends exactly 25 minutes after it started, not early. */
+    ASSERT_EQ(PM_EV_NONE, pomodoro_tick(&p, WRAP_START + MIN(25) - 1));
+    ASSERT_EQ(PM_EV_FOCUS_ENDED, pomodoro_tick(&p, WRAP_START + MIN(25)));
+    ASSERT_EQ(PM_ALARM, p.state);
+    PASS();
+}
+
+TEST break_survives_the_uint32_rollover(void) {
+    pomodoro_t p; pomodoro_init(&p, CFG);
+    /* Reach a short break with its deadline straddling the wrap. */
+    pomodoro_start_focus(&p, 0);
+    pomodoro_tick(&p, MIN(25));
+    pomodoro_acknowledge(&p, WRAP_START);
+    ASSERT_EQ(PM_BREAK_SHORT, p.state);
+
+    ASSERT_EQ(PM_EV_NONE, pomodoro_tick(&p, WRAP_START));
+    ASSERT_EQ(PM_BREAK_SHORT, p.state);
+    ASSERT_EQ(PM_EV_NONE, pomodoro_tick(&p, WRAP_START + MIN(5) - 1));
+    ASSERT_EQ(PM_EV_BREAK_ENDED, pomodoro_tick(&p, WRAP_START + MIN(5)));
+    ASSERT_EQ(PM_IDLE, p.state);
+    PASS();
+}
+
+TEST resume_survives_the_uint32_rollover(void) {
+    pomodoro_t p; pomodoro_init(&p, CFG);
+    pomodoro_start_focus(&p, 0);
+    pomodoro_pause(&p, MIN(10));                 /* 15 min left */
+    ASSERT_EQ(MIN(15), pomodoro_remaining_ms(&p, MIN(10)));
+    /* Resuming just before the wrap re-arms a deadline that wraps with it. */
+    pomodoro_resume(&p, WRAP_START);
+    ASSERT_EQ(PM_FOCUS, p.state);
+    ASSERT_EQ(MIN(15), pomodoro_remaining_ms(&p, WRAP_START));
+    ASSERT_EQ(PM_EV_NONE, pomodoro_tick(&p, WRAP_START));
+    ASSERT_EQ(PM_EV_FOCUS_ENDED, pomodoro_tick(&p, WRAP_START + MIN(15)));
+    PASS();
+}
+
 GREATEST_MAIN_DEFS();
 int main(int argc, char **argv) {
     GREATEST_MAIN_BEGIN();
@@ -101,5 +162,8 @@ int main(int argc, char **argv) {
     RUN_TEST(pause_resume_preserves_remaining);
     RUN_TEST(add5_extends_phase);
     RUN_TEST(skip_focus_breaks_streak_and_idles);
+    RUN_TEST(focus_survives_the_uint32_rollover);
+    RUN_TEST(break_survives_the_uint32_rollover);
+    RUN_TEST(resume_survives_the_uint32_rollover);
     GREATEST_MAIN_END();
 }
