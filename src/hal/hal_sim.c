@@ -2,6 +2,7 @@
 #include "dvi_view.h"
 #include <SDL2/SDL.h>
 #include <string.h>
+#include <math.h>
 
 /* --- button event queue, fed by an SDL event watch (snoops without consuming) --- */
 #define QN 32
@@ -26,6 +27,10 @@ static int map_key(SDL_Scancode sc, hal_btn_t *out) {
 }
 /* fake ambient lux for the auto-dim demo; [ / ] lower/raise it (not buttons, so not queued) */
 static float s_lux = 300.0f;
+/* fake board tilt, degrees away from face-up level; - / = tilt it, same idea.
+   Stepping rather than snapping flat<->upright means the simulator actually
+   exercises the hysteresis band and the hold timer in core/tilt.c. */
+static int s_tilt_deg = 0;
 
 static int SDLCALL key_watch(void *u, SDL_Event *e) {
     (void)u;
@@ -33,6 +38,8 @@ static int SDLCALL key_watch(void *u, SDL_Event *e) {
         hal_btn_t b; if (map_key(e->key.keysym.scancode, &b)) q_push(b);
         if (e->key.keysym.scancode == SDL_SCANCODE_LEFTBRACKET)  s_lux = (s_lux > 20.f) ? s_lux - 40.f : 0.f;
         if (e->key.keysym.scancode == SDL_SCANCODE_RIGHTBRACKET) s_lux = (s_lux < 960.f) ? s_lux + 40.f : 1000.f;
+        if (e->key.keysym.scancode == SDL_SCANCODE_MINUS)  s_tilt_deg = (s_tilt_deg > 15) ? s_tilt_deg - 15 : 0;
+        if (e->key.keysym.scancode == SDL_SCANCODE_EQUALS) s_tilt_deg = (s_tilt_deg < 75) ? s_tilt_deg + 15 : 90;
     }
     return 1; /* keep event in queue for LVGL */
 }
@@ -58,7 +65,11 @@ void hal_audio_idle(void) {}
 
 void hal_backlight(uint8_t pct) { (void)pct; }
 
-bool hal_imu(float *ax, float *ay, float *az) { *ax=0;*ay=0;*az=1.0f; return true; }
+bool hal_imu(float *ax, float *ay, float *az) {
+    float rad = (float)s_tilt_deg * 3.14159265f / 180.0f;
+    *ax = sinf(rad); *ay = 0.0f; *az = cosf(rad);
+    return true;
+}
 bool hal_lux(float *lux) { *lux = s_lux; return true; }
 
 /* Fake neighbor: emit one valid beacon frame ~every 4s so the Nearby screen has content. */

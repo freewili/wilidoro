@@ -6,6 +6,7 @@
 #include "leds/led_color.h"
 #include "bl_pwm.h"
 #include "sensors/opt4001.h"
+#include "sensors/bmi323.h"
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
@@ -128,6 +129,7 @@ static void audio_pump(uint32_t now) {
 }
 
 static bool s_light;
+static bool s_imu;
 
 /* ---------------- DVI --------------------------------------------------
  * 640x480p60 over the HSTX block (GPIO 12-19). The stored video region is
@@ -154,6 +156,9 @@ void hal_init(void) {
     ws2812_show();
     bl_pwm_init();       /* backlight full-on; auto-dim is Plan C1 */
     s_light = opt4001_init();
+    /* Same I2C1 bus as the OPT4001 above and the codec's control registers
+       below. bmi323_init() DIAGs its own chipid check. */
+    s_imu = bmi323_init();
 
     /* Audio: codec regs over I2C1, then MCLK + PIO0 I2S. Playback only -- we do
        NOT call audio_capture_start(), so wilidoro registers no DMA_IRQ_0 handler.
@@ -217,7 +222,16 @@ void hal_audio_idle(void) {
 
 void hal_backlight(uint8_t pct) { bl_pwm_set(pct); }
 
-bool hal_imu(float *ax, float *ay, float *az) { (void)ax;(void)ay;(void)az; return false; }  /* Plan C */
+/* Accelerometer only. The BSP burst-reads all six axes in one transaction; the
+   gyro is not worth forking the driver to skip, and the tilt gate needs nothing
+   but the gravity vector. */
+bool hal_imu(float *ax, float *ay, float *az) {
+    if (!s_imu) return false;
+    bmi323_reading_t r;
+    if (!bmi323_read(&r)) return false;
+    *ax = r.ax; *ay = r.ay; *az = r.az;
+    return true;
+}
 bool hal_lux(float *lux) { return s_light && opt4001_read(lux); }
 
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }                       /* Plan C */
@@ -235,7 +249,7 @@ bool hal_dvi_surface(hal_dvi_surface_t *s) {
 void hal_dvi_enable(bool on) { if (s_dvi) hstx_dvi_enable(on); }
 
 hal_caps_t hal_caps(void) {
-    hal_caps_t c = { .radio=false,.imu=false,.light=s_light,.audio=s_audio_ok,
+    hal_caps_t c = { .radio=false,.imu=s_imu,.light=s_light,.audio=s_audio_ok,
                      .buttons=true,.leds=true,.dvi=s_dvi };
     return c;
 }
