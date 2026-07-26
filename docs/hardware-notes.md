@@ -91,6 +91,36 @@ Not yet exercised (needs a longer session; none is a blocker):
   sequence end. Only the Flip and Arcade alarms have rests, and neither has
   been exercised yet, so this is still open.
 
+## Themes — all three confirmed on the panel
+
+*Hardware-verified 2026-07-26, camera-captured on an eMeet C960. Closes the Plan B2
+item "flash, then cycle themes via Settings", open since 2026-07-25.*
+
+All three themes render correctly on the real panel, and **switching theme live from
+the Settings row works** — the face rebuilds without a reboot.
+
+| theme | confirmed on screen |
+|---|---|
+| Neon Arc | orange arc ring, `MM:SS` centred, `FOCUS n/4` |
+| Retro Tomato Arcade | tomato mascot + green stalk, `lv_bar` health bar, `LVL n xN` score, `** FOCUS **` |
+| Warm Flip Clock | two flip cards with the mechanical seam, lowercase `focus` status, session dots, `stay with it` prose |
+
+The **softkey bar stayed byte-identical across all three**, which is the
+theme-independence B2 specified rather than something that merely happened to look
+similar.
+
+**The arc geometry is right, not just plausible:** a capture reading `03:47` showed the
+ring ~85 % complete, and 21:13 elapsed of a 25:00 focus is 85 %. The permille math
+checks out against the clock.
+
+**One thing to check by eye rather than by camera.** The Flip Clock face reads *cool*
+(slate blue-grey cards) in the captures, while the design calls it "Warm Flip Clock"
+with a warm palette. **This is probably a camera artefact, not a bug** — the WS2812s
+wash the whole scene magenta and the C960's white balance is visibly skewed by it, so
+every capture in this file's theme set is colour-unreliable. Confirm the warm palette
+by eye before changing `theme_flip.c`; do not "fix" a palette on the strength of a
+photo taken under magenta LEDs.
+
 ## DVI output — region size and pixel clock
 
 *Hardware-verified 2026-07-25: picture confirmed on a mini projector (HDMI input)
