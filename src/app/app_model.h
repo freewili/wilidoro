@@ -17,7 +17,7 @@ typedef struct {
     char     name[APP_NAME_LEN];  /* space-padded ASCII, not NUL-terminated */
     uint8_t  theme;        /* 0..2; activated in Plan B2 */
     bool     dvi_on;       /* big-room DVI display */
-    bool     tilt_pause;   /* IMU: lift or tilt the board to pause a focus session */
+    bool     tilt_pause;   /* IMU: tilt the board out of level to pause a focus session */
 } app_settings_t;
 
 void app_settings_defaults(app_settings_t *s);

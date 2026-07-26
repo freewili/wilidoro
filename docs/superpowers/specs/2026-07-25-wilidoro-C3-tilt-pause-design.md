@@ -174,10 +174,10 @@ the suite stays at 10 binaries):**
 confirm a manual pause while flat is not immediately undone.
 
 **Hardware:** a checklist appended to `docs/hardware-notes.md` — `bmi323: chipid`
-in RTT, a physical lift pauses focus, setting it down resumes, the toggle off is
-inert. **To be run only with the user's explicit say-so**, per the standing rule
-that flashing, RTT, the probe, the camera and the microphone all need asking
-first.
+in RTT, tilting the board out of level pauses focus, setting it back down flat
+resumes, the toggle off is inert. **To be run only with the user's explicit
+say-so**, per the standing rule that flashing, RTT, the probe, the camera and
+the microphone all need asking first.
 
 ## 7. Out of scope
 
