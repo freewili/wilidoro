@@ -11,6 +11,7 @@ TEST settings_defaults_are_classic_pomodoro(void) {
     ASSERT_EQ(0,  s.theme);
     ASSERT(s.beacon_on);
     ASSERT(s.dvi_on);
+    ASSERT_FALSE(s.tilt_pause);   /* opt-in: setting the board down must not surprise you */
     PASS();
 }
 

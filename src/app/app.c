@@ -9,6 +9,7 @@
 #include "led_pattern.h"
 #include "timer_view.h"
 #include "dvi_view.h"
+#include "tilt.h"
 #include "lvgl.h"
 
 static app_t s_app;
@@ -20,6 +21,7 @@ app_t *app(void) { return &s_app; }
 
 static lv_obj_t *s_scr[3];
 static dim_state_t s_dim;
+static tilt_state_t s_tilt;
 static uint32_t s_next_lux;
 static uint32_t s_next_tick_ms;    /* next focus tick (0 = none scheduled) */
 static uint32_t s_alarm_next_ms;   /* next alarm re-ring while un-dismissed */
@@ -60,6 +62,11 @@ void app_dvi_apply(void) {
     hal_dvi_enable(s_app.settings.dvi_on);
     if (s_app.settings.dvi_on) dvi_dirty_reset(&s_dvi_dirty);
 }
+
+/* Re-prime the gate so enabling the feature adopts the board's current
+   orientation instead of reporting it as a fresh transition. Called both when
+   the toggle flips and when the Default softkey rewrites the settings struct. */
+void app_tilt_apply(void) { tilt_init(&s_tilt); }
 
 static void route_softkey(int col) {
     app_sound(SND_BLIP);
@@ -159,6 +166,7 @@ void app_init(void) {
     pomodoro_init(&s_app.pomo, cfg);
     neighbor_table_init(&s_app.neighbors);
     dim_init(&s_dim, 100.0f);
+    tilt_init(&s_tilt);
     dvi_dirty_reset(&s_dvi_dirty);
     s_next_lux = 0;
     s_app.screen = SCREEN_TIMER; s_app.alarm_active = false;

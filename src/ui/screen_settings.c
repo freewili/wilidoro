@@ -4,10 +4,11 @@
 #include "app_model.h"
 #include "screen_timer.h"
 #include "theme.h"
+#include "hal.h"
 #include <stdio.h>
 
 static lv_obj_t *s_scr, *s_list, *s_bar, *s_title;
-static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beacon, *s_val_theme, *s_val_dvi;
+static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beacon, *s_val_theme, *s_val_dvi, *s_val_tilt;
 
 static void refresh_values(void) {
     app_settings_t *s = &app()->settings; char b[16];
@@ -17,12 +18,15 @@ static void refresh_values(void) {
     snprintf(b,sizeof b,"%u%%",s->volume);      lv_label_set_text(s_val_vol,b);
     lv_label_set_text(s_val_beacon, s->beacon_on?"on":"off");
     lv_label_set_text(s_val_dvi, s->dvi_on?"on":"off");
+    /* "no imu" rather than "off" when the BMI323 never came up, so a dead
+       sensor is visible instead of a toggle that silently does nothing. */
+    lv_label_set_text(s_val_tilt, hal_caps().imu ? (s->tilt_pause?"on":"off") : "no imu");
     static const char *tn[3]={"Neon Arc","Arcade","Flip Clock"};
     lv_label_set_text(s_val_theme, tn[s->theme%3]);
 }
 
 /* Each row: [label] [-] [value] [+]. user_data on +/- encodes which setting & sign. */
-enum { SET_FOCUS=1, SET_SHORT, SET_LONG, SET_VOL, SET_BEACON, SET_THEME, SET_DVI };
+enum { SET_FOCUS=1, SET_SHORT, SET_LONG, SET_VOL, SET_BEACON, SET_THEME, SET_DVI, SET_TILT };
 static void adj_event(lv_event_t *e) {
     intptr_t code = (intptr_t)lv_event_get_user_data(e);
     int which = (int)(code >> 1); int sign = (code & 1) ? +1 : -1;
@@ -35,6 +39,7 @@ static void adj_event(lv_event_t *e) {
         case SET_BEACON:s->beacon_on = !s->beacon_on; break;
         case SET_THEME: app_settings_cycle_theme(s); screen_timer_apply_theme(); break;
         case SET_DVI:   s->dvi_on = !s->dvi_on; app_dvi_apply(); break;
+        case SET_TILT:  s->tilt_pause = !s->tilt_pause; app_tilt_apply(); break;
     }
     refresh_values();
 }
@@ -93,6 +98,7 @@ lv_obj_t *screen_settings_create(void) {
     s_val_beacon = add_row("Beacon",       SET_BEACON);
     s_val_theme  = add_row("Theme",        SET_THEME);
     s_val_dvi    = add_row("DVI output",   SET_DVI);
+    s_val_tilt   = add_row("Tilt to pause", SET_TILT);
 
     s_bar = ui_softkey_bar(s_scr, screen_settings_softkey);
     const char *lbl[5] = {"Back", 0, "Default", 0, "Save"};
@@ -108,7 +114,7 @@ void screen_settings_update(void) {
 void screen_settings_softkey(int col) {
     app_t *a = app();
     if (col==0) { app_goto(SCREEN_TIMER); }
-    else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); screen_timer_apply_theme(); app_dvi_apply(); }
+    else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); screen_timer_apply_theme(); app_dvi_apply(); app_tilt_apply(); }
     else if (col==4) {
         pm_config_t c = { a->settings.focus_min, a->settings.short_min, a->settings.long_min, a->settings.long_every };
         if (a->pomo.state == PM_IDLE) pomodoro_init(&a->pomo, c); /* apply only when idle to avoid mid-session surprise */
