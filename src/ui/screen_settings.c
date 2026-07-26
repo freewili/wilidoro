@@ -60,7 +60,10 @@ static lv_obj_t *add_row(const char *name, int which) {
     lv_obj_add_event_cb(minus, adj_event, LV_EVENT_CLICKED, (void*)(intptr_t)((which<<1)|0));
     lv_obj_t *ml=lv_label_create(minus); lv_label_set_text(ml,"-"); lv_obj_center(ml);
     lv_obj_t *val = lv_label_create(row); lv_obj_set_width(val, 90);
-    lv_obj_set_style_text_color(val, lv_color_hex(UI_ACCENT), 0);
+    /* Plain white, not UI_ACCENT: the saturated coral was picked as an accent for
+       a neutral mock and is hard to read as body text on the dark list once the
+       auto-dim backlight drops. These values are the thing you actually read. */
+    lv_obj_set_style_text_color(val, lv_color_hex(UI_TEXT), 0);
     lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_t *plus = lv_button_create(row); lv_obj_set_size(plus,34,30);
     lv_obj_add_event_cb(plus, adj_event, LV_EVENT_CLICKED, (void*)(intptr_t)((which<<1)|1));

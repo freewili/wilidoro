@@ -93,15 +93,19 @@ Not yet exercised (needs a longer session; none is a blocker):
 
 ## DVI output — region size and pixel clock
 
-*Never yet seen on a monitor — the checklist at the end of this section is the gate.*
+*Hardware-verified 2026-07-25: picture confirmed on a mini projector (HDMI input)
+at the board default 250 MHz — i.e. at the 0.7 %-low 25.0 MHz pixel clock, with
+no clock change needed.*
 
 The RP2350 HSTX block drives 640×480p60 DVI on GPIO 12–19. Wilidoro shows a
 room-readable focus view there — state word, huge `MM:SS`, session dots — in the
 active theme's colors. The LCD is unaffected and remains the control surface.
 
 **Pixel clock is `clk_sys/10`.** At the board default 250 MHz that is 25.0 MHz —
-0.7 % below the 25.175 MHz standard, but within most monitors' tolerance, and it
-keeps the NAU88C10 audio exactly as verified. `board_init_clk(252000)` would give
+0.7 % below the 25.175 MHz standard, and **confirmed on hardware to be within
+tolerance**: a mini projector synced and displayed the view at 25.0 MHz with no
+clock change. This keeps the NAU88C10 audio at exactly the 16009 Hz it was
+verified at. `board_init_clk(252000)` would give
 an exact 25.2 MHz at the cost of ~0.8 % audio pitch; the sample rate is now
 derived from `clk_sys` at runtime, so that switch is safe to make if a monitor
 refuses to sync.
@@ -121,10 +125,20 @@ program. `src/app/dvi_view.c` funnels every write through one clipped `fill_rect
 and its unit tests render into a surface whose slack columns hold a sentinel value
 to prove nothing escapes.
 
-### On-device DVI checklist (pending — needs a flash session and a monitor)
+### On-device DVI checklist
 
-1. A monitor syncs and shows the view at 25.0 MHz. If it does not, try
-   `board_init_clk(252000)` and confirm the chimes still sound correct.
+Item 1 is **DONE** (2026-07-25). The rest still need a session with the display
+connected.
+
+1. **PASS** — a mini projector on HDMI synced and showed the view at 25.0 MHz,
+   i.e. at the board default 250 MHz with no clock change. If some other display
+   refuses, `board_init_clk(252000)` gives an exact 25.2 MHz; confirm the chimes
+   still sound correct afterwards, since that moves fs to 16137 Hz.
+   **Diagnostic note:** an earlier "no sync" at this same clock turned out to be
+   an unplugged HDMI connector, and cost a wasted round-trip through 252 MHz.
+   Before drawing any conclusion from a blank display, confirm the cable is
+   seated at both ends and the input is selected — the same class of mistake as
+   the speaker jumper in the audio section above.
 2. The countdown is legible across a room and no digits are clipped.
 3. Switching theme on the LCD recolors the DVI output live.
 4. The Settings "DVI output" toggle blanks and restores it.
