@@ -268,6 +268,43 @@ also handles the GPIO8 LCD_DC ↔ MISO mux). With a blocking LCD flush and every
 caller on an LVGL timer on core 0, SPI1 has exactly one owner at any instant. The
 LVGL flush path is deliberately unchanged.
 
+### Why the framer flushes on a quiet line instead of waiting for a gap
+
+**Do not "simplify" `beacon_rx_flush` away.** It looks redundant — `beacon_rx_push`
+already closes a segment when a gap-length run arrives — but that gap never comes.
+
+`gdo_capture.pio` timestamps a run **only when the run ends**, at the next level
+transition. `ook_tx_send` finishes a burst with `gpio_put(GDO0, 0)` and nothing
+touches the pin afterwards, so the burst's trailing low run is never pushed. Waiting
+for it decodes **nothing**: 0 of 256 payloads, measured on a host model of the PIO's
+emission rule. `tests/test_beacon_rx.c` models that rule precisely and asserts both
+directions — a modelled capture decodes *with* a flush and not without — so the
+regression is pinned. An earlier version of this feature waited for the gap and was
+completely non-functional while passing every test, because the tests fed it the
+encoder's output rather than the capture hardware's.
+
+**Checked against the upstream source this driver was harvested from**
+(`github.com/freewili/subghz`, local checkout at
+`C:\~prj\Dropbox\vibeProjects\subghz`), because a working OOK receiver would be
+better evidence than reasoning:
+
+- `gdo_capture.pio` and `ook_tx.c` are **byte-identical** to the BSP's. The
+  emission-on-transition behaviour is the original design, not something the harvest
+  broke or a dropped timeout push.
+- `monitor_engine` closes a burst exactly the way the broken version did —
+  `ticks >= MON_IDLE_TICKS` (20 ms) — and that is fine *there*, because it drives a
+  live pulse-width histogram with no deadline: the long run eventually gets pushed
+  when the next edge (AGC noise or the next burst) arrives, and latency does not
+  matter for a statistics display.
+- **subghz never decodes frames at all.** It is capture-and-replay: it stores raw
+  duration timelines and re-transmits them. Grepping its whole source for
+  Manchester/CRC/decode finds nothing.
+
+So there is no upstream precedent to copy for what wilidoro needs — a decoder that
+must know whether a *complete* frame has arrived by now. The flush is that answer,
+and the upstream example validates the hardware model without offering an
+alternative.
+
 ### Two things genuinely unproven
 
 1. **Over-the-air RX has never been demonstrated on this hardware by anyone.**
