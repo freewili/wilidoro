@@ -531,10 +531,13 @@ EOF
 - Modify: `src/app/app_model.h` (add the field), `src/app/app_model.c` (default it)
 - Modify: `tests/test_app_model.c` (assert the default)
 - Modify: `src/ui/screen_settings.c` (row, value text, Default-key re-prime)
+- Modify: `src/app/app.h`, `src/app/app.c` (the `app_tilt_apply` seam and the gate's state)
 
 **Interfaces:**
-- Consumes: `app_tilt_apply()` from Task 4. **Task 3 references a function Task 4 defines**, so `src/ui/screen_settings.c` will not link until Task 4 is done — that is expected, and Step 7 below is a compile-only check. `app_tilt_apply` takes no arguments and returns `void`.
-- Produces: `bool app_settings_t.tilt_pause`, default `false`. Task 4 reads it as `s_app.settings.tilt_pause`.
+- Consumes: `tilt_init` / `tilt_state_t` from Task 1.
+- Produces: `bool app_settings_t.tilt_pause`, default `false` — Task 4 reads it as `s_app.settings.tilt_pause`. Also `void app_tilt_apply(void)` and the file-static `tilt_state_t s_tilt` in `src/app/app.c`, which Task 4's `sensor_cb` feeds.
+
+This task owns the `app_tilt_apply` seam so that **every commit builds and links.** Nothing reads `s_tilt` yet — Task 4 adds the reader.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -630,58 +633,13 @@ Add `app_tilt_apply()` to it:
 
 This is the same class of bug as the "Default desyncs `dvi_on`" regression recorded as item 7 of the DVI checklist in `docs/hardware-notes.md`: pressing Default resets `tilt_pause` in the struct, so the gate's primed zone must be re-adopted to match.
 
-- [ ] **Step 7: Verify it compiles**
-
-Run: `cmake --build build-sim`
-
-Expected: `screen_settings.c` **compiles** clean, then the **link fails** with `undefined reference to 'app_tilt_apply'`. That is the expected state — Task 4 defines it. If you see a *compile* error in `screen_settings.c`, fix that before continuing.
-
-- [ ] **Step 8: Commit**
-
-```bash
-git add src/app/app_model.h src/app/app_model.c tests/test_app_model.c src/ui/screen_settings.c
-git commit -m "$(cat <<'EOF'
-feat(settings): add the tilt_pause setting and its row
-
-Defaults to false -- setting the board down should not silently start
-gating a session until you ask for it.
-
-The row reads "no imu" instead of "off" when hal_caps().imu is false, so
-a BMI323 that never answered is visible rather than presenting a toggle
-that does nothing. The Default softkey now re-applies the gate too, the
-same fix the DVI toggle needed when Default reset dvi_on behind it.
-
-Does not link on its own: app_tilt_apply() arrives with the app wiring.
-
-Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
-EOF
-)"
-```
-
----
-
-### Task 4: App wiring — one 100 ms sensor timer, and the pause/resume rule
-
-Completes the feature. The lux poll moves out of `tick_cb` so that a single timer owns every I2C1 sensor read.
-
-**Files:**
-- Modify: `src/app/app.h` (declare `app_tilt_apply`)
-- Modify: `src/app/app.c` (include, state, `app_tilt_apply`, `sensor_cb`, remove the lux block from `tick_cb`, `app_init`)
-- Modify: `docs/hardware-notes.md` (tunables + on-device checklist)
-
-**Interfaces:**
-- Consumes: `tilt_init` / `tilt_feed` / `tilt_event_t` / `tilt_state_t` from Task 1; `hal_imu` from Task 2; `app_settings_t.tilt_pause` from Task 3. Also the pre-existing `pomodoro_pause(pomodoro_t*, uint32_t)`, `pomodoro_resume(pomodoro_t*, uint32_t)`, `pm_state_t` values `PM_FOCUS` / `PM_PAUSED`, and `pomodoro_t.resume_state` (`src/core/pomodoro.h`).
-- Produces: `void app_tilt_apply(void)`, which Task 3's `screen_settings.c` already calls.
-
-- [ ] **Step 1: Declare the seam**
+- [ ] **Step 7: Add the `app_tilt_apply` seam**
 
 In `src/app/app.h`, after the existing `void app_dvi_apply(void);` line:
 
 ```c
 void   app_tilt_apply(void);         /* re-prime the tilt gate after tilt_pause changes */
 ```
-
-- [ ] **Step 2: Include the gate and hold its state**
 
 In `src/app/app.c`, add to the include block after `#include "dvi_view.h"`:
 
@@ -695,9 +653,7 @@ Next to the existing `static dim_state_t s_dim;` declaration, add:
 static tilt_state_t s_tilt;
 ```
 
-- [ ] **Step 3: Implement `app_tilt_apply`**
-
-In `src/app/app.c`, immediately after the existing `app_dvi_apply` function:
+Immediately after the existing `app_dvi_apply` function, add:
 
 ```c
 /* Re-prime the gate so enabling the feature adopts the board's current
@@ -706,7 +662,69 @@ In `src/app/app.c`, immediately after the existing `app_dvi_apply` function:
 void app_tilt_apply(void) { tilt_init(&s_tilt); }
 ```
 
-- [ ] **Step 4: Move the lux poll out of `tick_cb`**
+In `app_init`, immediately after the existing `dim_init(&s_dim, 100.0f);` line:
+
+```c
+    tilt_init(&s_tilt);
+```
+
+Task 4 adds the code that reads `s_tilt`. Until then it is written and never
+read, which is correct and warning-free: it is a file-static struct, not an
+unused local.
+
+- [ ] **Step 8: Verify the simulator builds and links**
+
+Run: `cmake --build build-sim`
+
+Expected: compiles **and links** clean, with zero warnings.
+
+- [ ] **Step 9: Verify the host suite still passes**
+
+Run: `powershell -File tools/test.ps1`
+
+Expected: `100% tests passed, 0 tests failed out of 10`.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add src/app/app_model.h src/app/app_model.c tests/test_app_model.c src/ui/screen_settings.c src/app/app.h src/app/app.c
+git commit -m "$(cat <<'EOF'
+feat(settings): add the tilt_pause setting and its row
+
+Defaults to false -- setting the board down should not silently start
+gating a session until you ask for it.
+
+The row reads "no imu" instead of "off" when hal_caps().imu is false, so
+a BMI323 that never answered is visible rather than presenting a toggle
+that does nothing. The Default softkey re-applies the gate too, the same
+fix the DVI toggle needed when Default reset dvi_on behind it.
+
+Carries the app_tilt_apply seam and the gate's state with it, so this
+commit builds and links on its own; the sensor cadence that reads them
+lands next.
+
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+---
+
+### Task 4: App wiring — one 100 ms sensor timer, and the pause/resume rule
+
+Completes the feature. The lux poll moves out of `tick_cb` so that a single timer owns every I2C1 sensor read.
+
+**Files:**
+- Modify: `src/app/app.c` (add `sensor_cb`, remove the lux block from `tick_cb`, start the timer)
+- Modify: `docs/hardware-notes.md` (tunables + on-device checklist)
+
+**Interfaces:**
+- Consumes: `tilt_feed` / `tilt_event_t` from Task 1; `hal_imu` from Task 2; `app_settings_t.tilt_pause` and the file-static `tilt_state_t s_tilt` (already declared and initialised in `src/app/app.c`) from Task 3. Also the pre-existing `pomodoro_pause(pomodoro_t*, uint32_t)`, `pomodoro_resume(pomodoro_t*, uint32_t)`, `pm_state_t` values `PM_FOCUS` / `PM_PAUSED`, and `pomodoro_t.resume_state` (`src/core/pomodoro.h`).
+- Produces: nothing new that later tasks consume — this is the last task.
+
+**Do not** re-add `#include "tilt.h"`, `static tilt_state_t s_tilt;`, `app_tilt_apply`, or the `tilt_init(&s_tilt)` call in `app_init` — Task 3 added all four. Verify they are present before starting; if any is missing, that is a Task 3 gap worth reporting.
+
+- [ ] **Step 1: Move the lux poll out of `tick_cb`**
 
 In `tick_cb`, delete this entire block (currently `src/app/app.c:116-125`):
 
@@ -725,7 +743,7 @@ In `tick_cb`, delete this entire block (currently `src/app/app.c:116-125`):
 
 Leave the `/* per-theme LED pattern */` line that follows it, and everything after, untouched.
 
-- [ ] **Step 5: Add `sensor_cb`**
+- [ ] **Step 2: Add `sensor_cb`**
 
 In `src/app/app.c`, insert this immediately **before** `static void tick_cb(lv_timer_t *t)`:
 
@@ -781,33 +799,29 @@ static void sensor_cb(lv_timer_t *t) {
 
 Note the deadline test is now wrap-safe (`(int32_t)(now - s_next_lux) >= 0`), matching every other deadline in this file; the old `now >= s_next_lux` would have stalled the auto-dim for 500 ms at the 49-day `hal_now_ms` rollover.
 
-- [ ] **Step 6: Initialise and start the timer**
+- [ ] **Step 3: Start the timer**
 
-In `app_init`, immediately after the existing `dim_init(&s_dim, 100.0f);` line:
-
-```c
-    tilt_init(&s_tilt);
-```
-
-And immediately after the existing `lv_timer_create(sound_cb, 20, NULL);` line:
+In `app_init`, immediately after the existing `lv_timer_create(sound_cb, 20, NULL);` line:
 
 ```c
     lv_timer_create(sensor_cb, 100, NULL);
 ```
 
-- [ ] **Step 7: Verify the simulator builds and links**
+(`tilt_init(&s_tilt)` is already in `app_init` from Task 3 — do not add it again.)
+
+- [ ] **Step 4: Verify the simulator builds and links**
 
 Run: `cmake --build build-sim`
 
-Expected: compiles **and links** clean this time — `app_tilt_apply` now exists.
+Expected: compiles and links clean, with zero warnings.
 
-- [ ] **Step 8: Verify the host suite still passes**
+- [ ] **Step 5: Verify the host suite still passes**
 
 Run: `powershell -File tools/test.ps1`
 
 Expected: `100% tests passed, 0 tests failed out of 10`.
 
-- [ ] **Step 9: Exercise it in the simulator**
+- [ ] **Step 6: Exercise it in the simulator**
 
 Run: `./build-sim/wilidoro_sim.exe` (or `build-sim/wilidoro_sim`).
 
@@ -822,13 +836,13 @@ Walk this sequence and confirm each observation before moving on:
 7. Back in Settings, set **Tilt to pause** to `off`. Tilting now does nothing.
 8. Press the **Default** softkey, then tilt: still nothing (Default resets `tilt_pause` to false), and no spurious pause fires from the re-prime.
 
-- [ ] **Step 10: Verify the device builds**
+- [ ] **Step 7: Verify the device builds**
 
 Run: `powershell -File tools/build.ps1 -Clean`
 
 Expected: zero warnings, no RAM overflow, `wilidoro.uf2` produced. Compare the reported RAM figures against the ~81 KB of headroom recorded in `docs/hardware-notes.md`; this plan adds a `tilt_state_t` (12 bytes) and one LVGL timer.
 
-- [ ] **Step 11: Document the tunables and the on-device checklist**
+- [ ] **Step 8: Document the tunables and the on-device checklist**
 
 Append to `docs/hardware-notes.md`, immediately before the final `---` separator and its "Why this note isn't in the BSP" paragraph:
 
@@ -883,10 +897,10 @@ None of this has been run. **Ask before flashing.**
    `sensor_cb` — cover the sensor and confirm the backlight and LEDs drop.
 ```
 
-- [ ] **Step 12: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/app/app.h src/app/app.c docs/hardware-notes.md
+git add src/app/app.c docs/hardware-notes.md
 git commit -m "$(cat <<'EOF'
 feat(app): gate focus on the board lying flat
 
