@@ -118,7 +118,18 @@ This repo tries to be honest about the difference between "host-tested" and "see
 
 ## Credits
 
-Built on [`wilibsp`](https://github.com/freewili/wilibsp), whose radio drivers were harvested from [`subghz`](https://github.com/freewili/subghz). UI by [LVGL 9](https://lvgl.io). Unit tests use [greatest](https://github.com/silentbicycle/greatest).
+Built on [`wilibsp`](https://github.com/freewili/wilibsp), whose radio drivers were harvested from [`subghz`](https://github.com/freewili/subghz). UI by [LVGL 9](https://lvgl.io).
+
+### Third-party components
+
+Wilidoro's own code is MIT. These vendored files and submodules keep their own terms:
+
+| Component | Where | License |
+|---|---|---|
+| [greatest](https://github.com/silentbicycle/greatest) | `tests/greatest.h` | ISC — © 2011–2021 Scott Vokes |
+| Pico SDK import shim | `pico_sdk_import.cmake` | BSD-3-Clause — © Raspberry Pi Ltd |
+| [LVGL](https://github.com/lvgl/lvgl) 9.2.2 | `third_party/lvgl` submodule; `config/lv_conf.h` derived from its template | MIT |
+| [`wilibsp`](https://github.com/freewili/wilibsp) | `wilibsp` submodule | see that repository |
 
 ## License
 
