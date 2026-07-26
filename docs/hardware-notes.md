@@ -343,11 +343,23 @@ regressed the previously-verified display, audio or LED paths. Items 1 and 2 wer
 **not read**, and that gap is load-bearing: see the caveat under item 3. **Ask
 before flashing.**
 
-1. **NOT READ.** RTT at boot should report `cc1101: PARTNUM=0x00 VERSION=0x14` and
-   `radio: cc1101 ok`. A `VERSION` of `0x00` or `0xFF` means nothing answered on
-   SPI1 and the beacon stays disabled. **This is the first thing to capture next
-   session** — it gates the interpretation of items 3 and 4 as well as being the
-   presence check.
+1. **NOT READ, and lower value than it first appears.** RTT at boot should report
+   `cc1101: PARTNUM=0x00 VERSION=0x14` and `radio: cc1101 ok`.
+
+   **The CC1101 is soldered to the board**, so this is not a presence check in any
+   useful sense — there is no module to be missing. A `VERSION` of `0x00`/`0xFF`
+   would mean the SPI *read* came back implausible, and with a soldered part that
+   means a bus problem, not a missing chip. The one plausible mechanism is that
+   **GPIO8 is shared**: it is the CC1101's MISO *and* the LCD's DC line.
+   `spi_bus_acquire_cc1101()` re-muxes it per transaction, drops the baudrate from
+   the LCD's 100 MHz to the radio's 5 MHz, and drains the SPI RX FIFO — the LCD
+   does write-only transfers and never reads, so the FIFO holds LCD garbage that
+   would otherwise return as the radio's first reply.
+
+   `st7796_init()` runs at `main.c:20`, before `hal_init()` at `:25`, but LVGL does
+   not start *flushing* until the main loop — so the boot probe exercises the GPIO8
+   mux and the stale-FIFO drain (valuable) but **not** concurrency with an in-flight
+   flush. Expect it to pass; it is the easy case.
 2. RTT reports `beacon: loopback ok`. Because the self-test cannot false-pass,
    a pass is strong evidence the whole chain (pack → encode → TX timing → PIO2
    capture → framer → decode → unpack) works. A `FAILED` does **not** by
@@ -365,8 +377,21 @@ before flashing.**
    silicon", which is a fact the BSP itself does not yet have.
 4. **PASS, under the same condition as item 3** — the LEDs still animate (PIO1),
    with the same dependency on whether PIO2 was actually started.
-5. With **Beacon** on, the ~136 ms transmit hitch every 20 s is not visibly
-   disruptive to the countdown, and never audibly stretches a chime.
+5. **THE HIGHEST-VALUE TEST ON THIS LIST, and nothing has ever exercised it.**
+   Turn **Beacon** on and watch the timer face for a few transmits with the sound
+   on. Two independent things are under test at once:
+
+   - **The contended GPIO8 mux.** Every transmit takes SPI1 away from the display
+     and re-muxes GPIO8 (LCD DC ↔ CC1101 MISO) *while LVGL is actively flushing*.
+     `spi_bus_acquire_cc1101()` spins on `st7796_flush_busy()` for exactly this, and
+     **wilidoro is the first app where that spin can actually block**, because
+     `hello_cc1101` has no display. Display corruption, tearing, or a wrong-looking
+     colour right after a transmit is this failing.
+   - **The 136 ms core-0 stall.** It must not visibly disrupt the countdown, and the
+     `!sound_active()` gate must keep it from ever stretching a chime.
+
+   Three transmits (~1 minute) is enough to know. This matters more than item 1: the
+   boot probe is the uncontended case, this is the contended one.
 6. With **Beacon** off (the default), there are no *periodic* transmits. The
    boot self-test still fires once regardless of the setting
    (`radio_loopback_selftest` runs from `hal_init`, before `app_init` reads
