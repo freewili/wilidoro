@@ -7,6 +7,10 @@
 #include "bl_pwm.h"
 #include "sensors/opt4001.h"
 #include "sensors/bmi323.h"
+#include "radio/cc1101.h"
+#include "radio/ook_tx.h"
+#include "radio/gdo_capture.h"
+#include "platform/ioexp.h"
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
@@ -131,6 +135,11 @@ static void audio_pump(uint32_t now) {
 static bool s_light;
 static bool s_imu;
 
+/* 433.92 MHz ISM. A hardware-routing fact, not app policy, so it lives here
+   rather than in core/beacon.h beside the wire format. */
+#define BEACON_HZ 433920000u
+static bool s_radio;
+
 /* ---------------- DVI --------------------------------------------------
  * 640x480p60 over the HSTX block (GPIO 12-19). The stored video region is
  * 480x240, sized by the HSTX_VID_*_MAX compile definitions in the root
@@ -148,6 +157,13 @@ _Static_assert(HAL_DVI_W == HSTX_VID_W_MAX && HAL_DVI_H == HSTX_VID_H_MAX,
                "HAL_DVI_* must match the HSTX_VID_*_MAX compile definitions");
 static bool s_dvi;
 
+/* Put the CC1101 back into async-transparent OOK RX, where GDO0 carries the
+   demodulated data edges that gdo_capture timestamps. Both bring-up and the end
+   of every transmit return here, so listening is the resting state. */
+static void radio_listen(void) {
+    cc1101_monitor_rx(BEACON_HZ, CC1101_MOD_ASK_OOK);
+}
+
 void hal_init(void) {
     uartkbd_init();
     ws2812_init(pio1, (uint)pio_claim_unused_sm(pio1, true), PIN_LED_DATA);
@@ -159,6 +175,18 @@ void hal_init(void) {
     /* Same I2C1 bus as the OPT4001 above and the codec's control registers
        below. bmi323_init() DIAGs its own chipid check. */
     s_imu = bmi323_init();
+
+    /* Route a CC1101 antenna before any radio SPI traffic. ioexp_antenna talks
+       to the PCAL6524 over I2C1 -- the same bus sensor_cb owns -- so it must stay
+       here in init, before any timer exists, and never move into a callback. */
+    ioexp_antenna(ANT_CC1101_433);
+    s_radio = cc1101_init();          /* DIAGs PARTNUM/VERSION itself */
+    if (s_radio) {
+        gdo_capture_init();
+        gdo_capture_start();
+        radio_listen();
+    }
+    DIAG("radio: cc1101 %s\n", s_radio ? "ok" : "ABSENT (beacon disabled)");
 
     /* Audio: codec regs over I2C1, then MCLK + PIO0 I2S. Playback only -- we do
        NOT call audio_capture_start(), so wilidoro registers no DMA_IRQ_0 handler.
@@ -234,7 +262,23 @@ bool hal_imu(float *ax, float *ay, float *az) {
 }
 bool hal_lux(float *lux) { return s_light && opt4001_read(lux); }
 
-void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }                       /* Plan C */
+/* Blocking: a frame is 136 bits x 2 half-bits x 500 us = ~136 ms of GPIO
+   toggling. ook_tx_send drives GDO0 (GPIO32) directly and touches no SPI; only
+   the short start/stop register bursts do, and those take the shared bus through
+   the BSP's own spi_bus arbiter. The caller gates the cadence. */
+void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) {
+    if (!s_radio) return;
+    uint32_t durs[BEACON_MAX_DURS];
+    bool start_level = false;
+    size_t n = beacon_ook_encode(wire, durs, BEACON_MAX_DURS, &start_level);
+    if (n == 0) return;
+
+    cc1101_tx_ook_start(BEACON_HZ);              /* key the carrier; GDO0 becomes SIO */
+    ook_tx_send(durs, (uint32_t)n, start_level);
+    cc1101_tx_ook_stop();
+    gdo_capture_attach_pin();                    /* undo the SIO takeover */
+    radio_listen();
+}
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }               /* Plan C */
 
 bool hal_dvi_surface(hal_dvi_surface_t *s) {
@@ -249,7 +293,7 @@ bool hal_dvi_surface(hal_dvi_surface_t *s) {
 void hal_dvi_enable(bool on) { if (s_dvi) hstx_dvi_enable(on); }
 
 hal_caps_t hal_caps(void) {
-    hal_caps_t c = { .radio=false,.imu=s_imu,.light=s_light,.audio=s_audio_ok,
+    hal_caps_t c = { .radio=s_radio,.imu=s_imu,.light=s_light,.audio=s_audio_ok,
                      .buttons=true,.leds=true,.dvi=s_dvi };
     return c;
 }
