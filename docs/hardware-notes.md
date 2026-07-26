@@ -236,6 +236,77 @@ the board in hand. **Ask before flashing.**
     is expected to require a manual Resume afterward, since Default turns
     `tilt_pause` off and re-primes the gate.
 
+## CC1101 focus beacon — cadence and what is unproven
+
+*Not yet hardware-verified. Everything below is reasoned from the BSP's own
+driver docs and its 2026-07-04 radio findings; nothing in this section has been
+observed on a wilidoro board.*
+
+Wilidoro broadcasts its focus state at **433.92 MHz** (`BEACON_HZ` in
+`src/hal/hal_target.c`) as OOK Manchester, and listens for other wilidoros to
+populate the Nearby screen. Listening is the resting state; every transmit
+returns to it.
+
+| tunable | value | where | meaning |
+|---|---|---|---|
+| `BEACON_TX_MS` | 20 000 | `src/app/app.c` | transmit period; `NEIGHBOR_TTL_MS` is 60 s, so a listener gets three chances |
+| `BEACON_HALFBIT_US` | 500 | `src/core/beacon.h` | OOK half-bit, so a frame is ~136 ms |
+| `BEACON_GAP_US` | 2 500 | `src/core/beacon_rx.h` | inter-frame gap threshold; `beacon_ook_decode` rejects runs over 4 half-bits |
+
+**A transmit blocks core 0 for ~136 ms** (136 bits × 2 half-bits × 500 µs) and is
+therefore gated on `!sound_active()` — a stall during a chime would stretch the
+tone audibly, and that is the only genuinely bad symptom. The countdown updates
+once a second, so the visual hitch is near-invisible. Core 1 is free and would
+remove the hitch entirely; it was deliberately not used, to avoid making SPI1
+concurrent and stacking risk on the unproven PIO coexistence below.
+
+**SPI1 needs no new arbitration.** `gdo_capture` is off-bus by construction,
+`ook_tx_send` bit-bangs GDO0 (GPIO32) and touches no SPI, and the CC1101's short
+register bursts already go through the BSP's `spi_bus_acquire_cc1101()` (which
+also handles the GPIO8 LCD_DC ↔ MISO mux). With a blocking LCD flush and every
+caller on an LVGL timer on core 0, SPI1 has exactly one owner at any instant. The
+LVGL flush path is deliberately unchanged.
+
+### Two things genuinely unproven
+
+1. **Over-the-air RX has never been demonstrated on this hardware by anyone.**
+   `wilibsp`'s `hello_cc1101` phase 3 is a *same-pad plumbing test* — GDO0 is one
+   pin, chip-RX-out XOR MCU-TX-in — and the BSP's findings say proving a real
+   demod path "needs an external 433 MHz transmitter." Wilidoro's boot loopback
+   self-test (`beacon: loopback ok` / `FAILED` over RTT) covers the whole chain
+   *except* the air path and the CC1101's demodulator. Do not read a passing
+   loopback as working reception.
+2. **Three-PIO coexistence is unproven on silicon.** Wilidoro already uses PIO0
+   (I2S audio) and PIO1 (WS2812); radio capture is PIO2. The BSP records this as
+   "architecturally sound but was not co-exercised on silicon." **If audio or the
+   LEDs break once the radio is live, this is the first suspect** — bisect by
+   skipping `gdo_capture_init()`/`gdo_capture_start()` in `hal_init`.
+
+### On-device beacon checklist
+
+None of this has been run. **Ask before flashing.**
+
+1. RTT at boot reports `cc1101: PARTNUM=0x00 VERSION=0x14` and `radio: cc1101 ok`.
+   A `VERSION` of `0x00` or `0xFF` means nothing answered on SPI1 and the beacon
+   stays disabled.
+2. RTT reports `beacon: loopback ok`. A `FAILED` here means the chain broke
+   somewhere between `beacon_pack` and `beacon_unpack` — and because the
+   self-test cannot false-pass, it is worth trusting.
+3. **Audio still works with the radio live** — play a start chime and confirm it
+   is clean. This is the three-PIO check and the most likely regression.
+4. **The LEDs still animate** with the radio live (PIO1 alongside PIO2).
+5. With **Beacon** on, the ~136 ms transmit hitch every 20 s is not visibly
+   disruptive to the countdown, and never audibly stretches a chime.
+6. With **Beacon** off, no transmit happens at all.
+7. Auto-dim, touch and the tilt gate all still behave — the transmit stall must
+   not break the 100 ms `sensor_cb` cadence beyond a skipped sample.
+8. **Conditional on a second transmitter.** A FreeWili One is also on the bench,
+   but `wilibsp` only supports `freewili2`, so it cannot run wilidoro firmware.
+   If it carries a 433 MHz CC1101 and its own tooling can send raw OOK, the real
+   two-device test becomes available: one board transmitting, the other listing it
+   on the Nearby screen. Until then the Nearby screen showing nothing on hardware
+   is expected and proves nothing either way.
+
 ---
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule
