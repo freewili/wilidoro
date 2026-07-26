@@ -118,7 +118,7 @@ Expected: a `framebuf` symbol of about `0x3cec0` (249,536 bytes ≈ 244 KB), **n
 - [ ] **Step 4: Commit the BSP change, in the submodule**
 
 ```bash
-cd "C:/~prj/Dropbox/vibeProjects/wilidoro/wilibsp"
+cd wilibsp
 git add bsp/display/hstx_dvi.h
 git commit -m "feat(dvi): let apps size the HSTX framebuffer
 
@@ -136,7 +136,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - [ ] **Step 5: Commit the wilidoro side**
 
 ```bash
-cd "C:/~prj/Dropbox/vibeProjects/wilidoro"
+cd <repo root>
 git add CMakeLists.txt
 git commit -m "build: size the HSTX DVI region to 480x240 (244 KB)
 

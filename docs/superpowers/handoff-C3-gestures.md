@@ -5,7 +5,7 @@ Paste the block below into a new session, run from the wilidoro project dir.
 ---
 
 I'm continuing work on **wilidoro**, a FreeWili 2 Pomodoro timer (C + LVGL 9 + the
-`wilibsp` BSP), at `C:\~prj\Dropbox\vibeProjects\wilidoro`. Project memory should
+`wilibsp` BSP), checked out at the repo root. Project memory should
 auto-load. Read `docs/superpowers/specs/2026-07-24-wilidoro-pomodoro-design.md`
 (the approved design) and `docs/hardware-notes.md` (bench-verified tuning values
 and the on-device checklists).

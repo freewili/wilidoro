@@ -77,7 +77,7 @@ wilidoro/
 - [ ] **Step 1: Add submodules pinned to known-good refs**
 
 ```bash
-cd /c/~prj/Dropbox/vibeProjects/wilidoro
+cd <repo root>
 git submodule add https://github.com/freewili/wilibsp.git wilibsp
 git submodule add https://github.com/lvgl/lvgl.git third_party/lvgl
 git -C third_party/lvgl checkout v9.2.2

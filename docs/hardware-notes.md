@@ -315,7 +315,7 @@ encoder's output rather than the capture hardware's.
 
 **Checked against the upstream source this driver was harvested from**
 (`github.com/freewili/subghz`, local checkout at
-`C:\~prj\Dropbox\vibeProjects\subghz`), because a working OOK receiver would be
+a sibling checkout of it), because a working OOK receiver would be
 better evidence than reasoning:
 
 - `gdo_capture.pio` and `ook_tx.c` are **byte-identical** to the BSP's. The

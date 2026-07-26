@@ -4,7 +4,7 @@ Paste the block below into a new session (run from the wilidoro project dir).
 
 ---
 
-I'm continuing work on **wilidoro**, a FreeWili 2 Pomodoro timer (C + LVGL 9 + the `wilibsp` BSP), at `C:\~prj\Dropbox\vibeProjects\wilidoro`. I want to design and build **Plan C2 — Audio**. Project memory should auto-load; also read `docs/superpowers/specs/2026-07-24-wilidoro-pomodoro-design.md` (the approved design) and skim the merged plans under `docs/superpowers/plans/`.
+I'm continuing work on **wilidoro**, a FreeWili 2 Pomodoro timer (C + LVGL 9 + the `wilibsp` BSP), checked out at the repo root. I want to design and build **Plan C2 — Audio**. Project memory should auto-load; also read `docs/superpowers/specs/2026-07-24-wilidoro-pomodoro-design.md` (the approved design) and skim the merged plans under `docs/superpowers/plans/`.
 
 ## Where things stand (all merged to `main`, host suite green)
 - **Plan A** — foundation: pure host-tested `core/` (pomodoro FSM, beacon codec, gestures, dimming), device firmware + SDL simulator, blank LVGL screen. Hardware-verified.
