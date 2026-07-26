@@ -337,11 +337,17 @@ alternative.
 
 ### On-device beacon checklist
 
-None of this has been run. **Ask before flashing.**
+Flashed 2026-07-26 (merge `58998b4`). The board **boots and renders, audio plays,
+and the LEDs animate** with the C4 firmware on it — so nothing in this branch
+regressed the previously-verified display, audio or LED paths. Items 1 and 2 were
+**not read**, and that gap is load-bearing: see the caveat under item 3. **Ask
+before flashing.**
 
-1. RTT at boot reports `cc1101: PARTNUM=0x00 VERSION=0x14` and `radio: cc1101 ok`.
-   A `VERSION` of `0x00` or `0xFF` means nothing answered on SPI1 and the beacon
-   stays disabled.
+1. **NOT READ.** RTT at boot should report `cc1101: PARTNUM=0x00 VERSION=0x14` and
+   `radio: cc1101 ok`. A `VERSION` of `0x00` or `0xFF` means nothing answered on
+   SPI1 and the beacon stays disabled. **This is the first thing to capture next
+   session** — it gates the interpretation of items 3 and 4 as well as being the
+   presence check.
 2. RTT reports `beacon: loopback ok`. Because the self-test cannot false-pass,
    a pass is strong evidence the whole chain (pack → encode → TX timing → PIO2
    capture → framer → decode → unpack) works. A `FAILED` does **not** by
@@ -349,9 +355,16 @@ None of this has been run. **Ask before flashing.**
    capture-ring/flush behaviour (debris left in the ring from a previous run,
    or the flush that closes the segment not firing) before suspecting the
    codec.
-3. **Audio still works with the radio live** — play a start chime and confirm it
-   is clean. This is the three-PIO check and the most likely regression.
-4. **The LEDs still animate** with the radio live (PIO1 alongside PIO2).
+3. **PASS, conditionally** — a softkey blip sounded cleanly with the C4 firmware
+   flashed (2026-07-26). **The condition matters and is easy to miss:**
+   `gdo_capture_init()` / `gdo_capture_start()` live *inside* `if (s_radio)` in
+   `hal_init`, so **PIO2 only runs if the CC1101 answered.** If it did not, this
+   observation proves only that C4 broke nothing — it does *not* exercise
+   three-PIO coexistence, because there was no third PIO. Item 1's RTT line is
+   what turns this from "nothing regressed" into "PIO0 + PIO1 + PIO2 coexist on
+   silicon", which is a fact the BSP itself does not yet have.
+4. **PASS, under the same condition as item 3** — the LEDs still animate (PIO1),
+   with the same dependency on whether PIO2 was actually started.
 5. With **Beacon** on, the ~136 ms transmit hitch every 20 s is not visibly
    disruptive to the countdown, and never audibly stretches a chime.
 6. With **Beacon** off (the default), there are no *periodic* transmits. The
@@ -362,7 +375,16 @@ None of this has been run. **Ask before flashing.**
    transmit ever follows that one.
 7. Auto-dim, touch and the tilt gate all still behave — the transmit stall must
    not break the 100 ms `sensor_cb` cadence beyond a skipped sample.
-8. **Conditional on a second transmitter.** A FreeWili One is also on the bench,
+8. **Worth fixing, and it would have closed items 1/3/4 without RTT.** The Settings
+   **Beacon** row shows only `on`/`off` — it does not surface `hal_caps().radio`,
+   so there is no way to tell from the screen whether the CC1101 answered. The
+   **Tilt to pause** row already does exactly this, showing `no imu` when
+   `hal_caps().imu` is false (added in Plan C3). Giving Beacon the same treatment
+   (`no radio`) is a few lines in `screen_settings.c`'s `refresh_values`, and it
+   would make the radio's presence self-evident on the device instead of requiring
+   a probe and an RTT capture. The `Beacon` row predates that pattern; it was never
+   deliberately excluded.
+9. **Conditional on a second transmitter.** A FreeWili One is also on the bench,
    but `wilibsp` only supports `freewili2`, so it cannot run wilidoro firmware.
    If it carries a 433 MHz CC1101 and its own tooling can send raw OOK, the real
    two-device test becomes available: one board transmitting, the other listing it
