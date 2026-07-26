@@ -79,8 +79,11 @@ Behaviour:
   This is why nothing is appended until `armed` is set: durations arriving before
   the first gap have unknown polarity and are discarded.
 - A run `< BEACON_GAP_US` while `armed` is appended to the segment.
-- Overflow past `BEACON_MAX_DURS` discards the segment (`n = 0`, stay `armed`) —
-  noise must not wedge the framer permanently.
+- Overflow past `BEACON_MAX_DURS` discards the segment **and clears `armed`**
+  (`n = 0`, `armed = false`), so the framer waits for the next gap rather than
+  resuming mid-run with unknown polarity — which is the very thing `armed` exists
+  to prevent. The next gap re-arms it, so noise cannot wedge the framer
+  permanently.
 
 Frames that survive framing are still checked by `beacon_unpack`'s magic, version
 and CRC16, which is what rejects noise that happens to frame plausibly.
