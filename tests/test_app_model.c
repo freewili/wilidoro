@@ -124,6 +124,63 @@ TEST tilt_gate_resumes_only_a_focus_pause(void) {
     PASS();
 }
 
+TEST beacon_msg_maps_state_and_copies_name(void) {
+    app_settings_t s; app_settings_defaults(&s);
+    pomodoro_t p; pomodoro_init(&p, (pm_config_t){ .focus_min = 25, .short_min = 5,
+                                                   .long_min = 15, .long_every = 4 });
+    beacon_msg_t m;
+
+    /* Idle: nothing running. */
+    app_beacon_msg(&s, &p, 0, &m);
+    ASSERT_EQ(BST_IDLE, m.state);
+    ASSERT_MEM_EQ(s.name, m.name, APP_NAME_LEN);   /* verbatim, space-padded */
+
+    /* Focus running. */
+    pomodoro_start_focus(&p, 0);
+    app_beacon_msg(&s, &p, 0, &m);
+    ASSERT_EQ(BST_FOCUS, m.state);
+    ASSERT_EQ(25, m.minutes_left);
+
+    /* Paused is NOT focusing -- broadcasting otherwise would freeze a
+       neighbour's countdown at a stale figure. */
+    pomodoro_pause(&p, 60000u);
+    app_beacon_msg(&s, &p, 60000u, &m);
+    ASSERT_EQ(BST_IDLE, m.state);
+
+    /* A break reads as a break. */
+    pomodoro_resume(&p, 60000u);
+    pomodoro_tick(&p, 60000u + 25u * 60000u);      /* focus ends -> PM_ALARM */
+    app_beacon_msg(&s, &p, 60000u + 25u * 60000u, &m);
+    ASSERT_EQ(BST_IDLE, m.state);                  /* alarm is not focusing either */
+    pomodoro_acknowledge(&p, 0);                   /* -> a break */
+    app_beacon_msg(&s, &p, 0, &m);
+    ASSERT_EQ(BST_BREAK, m.state);
+    PASS();
+}
+
+TEST beacon_msg_clamps_minutes_to_a_byte(void) {
+    app_settings_t s; app_settings_defaults(&s);
+    /* A phase far longer than 255 minutes must not wrap the single wire byte. */
+    pomodoro_t p; pomodoro_init(&p, (pm_config_t){ .focus_min = 600, .short_min = 5,
+                                                   .long_min = 15, .long_every = 4 });
+    pomodoro_start_focus(&p, 0);
+    beacon_msg_t m;
+    app_beacon_msg(&s, &p, 0, &m);
+    ASSERT_EQ(255, m.minutes_left);
+    PASS();
+}
+
+TEST beacon_msg_clamps_completed_to_a_byte(void) {
+    app_settings_t s; app_settings_defaults(&s);
+    pomodoro_t p; pomodoro_init(&p, (pm_config_t){ .focus_min = 25, .short_min = 5,
+                                                   .long_min = 15, .long_every = 4 });
+    p.stats.completed = 400;           /* accumulates without bound in a long session */
+    beacon_msg_t m;
+    app_beacon_msg(&s, &p, 0, &m);
+    ASSERT_EQ(255, m.completed);
+    PASS();
+}
+
 GREATEST_MAIN_DEFS();
 int main(int argc, char **argv) {
     GREATEST_MAIN_BEGIN();
@@ -136,5 +193,8 @@ int main(int argc, char **argv) {
     RUN_TEST(upsert_evicts_oldest_when_full);
     RUN_TEST(tilt_gate_pauses_only_focus);
     RUN_TEST(tilt_gate_resumes_only_a_focus_pause);
+    RUN_TEST(beacon_msg_maps_state_and_copies_name);
+    RUN_TEST(beacon_msg_clamps_minutes_to_a_byte);
+    RUN_TEST(beacon_msg_clamps_completed_to_a_byte);
     GREATEST_MAIN_END();
 }

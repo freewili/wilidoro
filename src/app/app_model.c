@@ -71,3 +71,18 @@ void neighbor_expire(neighbor_table_t *t, uint32_t now_ms) {
         if (t->items[i].used && (now_ms - t->items[i].last_seen_ms) > NEIGHBOR_TTL_MS)
             t->items[i].used = false;
 }
+
+void app_beacon_msg(const app_settings_t *s, const pomodoro_t *p,
+                    uint32_t now_ms, beacon_msg_t *out) {
+    memcpy(out->name, s->name, APP_NAME_LEN);
+    switch (p->state) {
+        case PM_FOCUS:                          out->state = BST_FOCUS; break;
+        case PM_BREAK_SHORT: case PM_BREAK_LONG: out->state = BST_BREAK; break;
+        default:                                out->state = BST_IDLE;  break;
+    }
+    /* Both wire fields are single bytes. Minutes round down; completed
+       accumulates without bound across a long session. */
+    uint32_t mins = pomodoro_remaining_ms(p, now_ms) / 60000u;
+    out->minutes_left = (uint8_t)(mins > 255u ? 255u : mins);
+    out->completed    = (uint8_t)(p->stats.completed > 255u ? 255u : p->stats.completed);
+}

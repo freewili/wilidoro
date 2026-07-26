@@ -48,4 +48,10 @@ void neighbor_table_init(neighbor_table_t *t);
 void neighbor_upsert(neighbor_table_t *t, const beacon_msg_t *m, uint32_t now_ms);
 void neighbor_expire(neighbor_table_t *t, uint32_t now_ms);
 int  neighbor_count(const neighbor_table_t *t);
+
+/* Build this device's outgoing beacon from live app state. Pure. PM_PAUSED and
+   PM_ALARM both report BST_IDLE: a paused session is not focusing, and saying
+   otherwise would freeze a neighbour's countdown at a stale figure. */
+void app_beacon_msg(const app_settings_t *s, const pomodoro_t *p,
+                    uint32_t now_ms, beacon_msg_t *out);
 #endif
