@@ -151,8 +151,12 @@ connected.
 
 ## Tilt to pause — thresholds and hold
 
-*Not yet hardware-verified. The values below are reasoned defaults, chosen at
-the desk and confirmed only in the simulator.*
+*Hardware-verified 2026-07-25: flashed to a physical FreeWili 2 (RP2350 rev 3)
+over the cmsis-dap probe, and the feature works — tipping the board up onto an
+edge paused a running focus session, and setting it back down flat resumed it
+from the same remaining time. The thresholds below were **not** adjusted; they
+worked as chosen on the first try. See the checklist below for which individual
+items were observed and which were not — several remain unverified.*
 
 The board lying face-up and level is the running orientation; tilt it out of
 level and a focus session pauses. `src/core/tilt.c` thresholds `az/‖a‖` — the
@@ -190,29 +194,44 @@ With the setting off, `hal_imu` is never called and the bus sees no extra traffi
 
 ### On-device tilt checklist
 
-None of this has been run. **Ask before flashing.**
+Items 2, 3 and 4 are **DONE** (2026-07-25). The rest still need a session with
+the board in hand. **Ask before flashing.**
 
-1. RTT at boot reports `bmi323: chipid=0x0043 ok`. If it says `??`, the part
-   *answered* but with an unexpected chip ID — `bmi323_init()`'s return value
-   only reflects whether the bus read got an ACK, not whether the ID matched,
-   so Settings still shows `on`/`off` as normal. Only a bus NAK (no ACK at
-   all) clears `caps.imu` and makes Settings show `no imu` — check which of
-   the two you have before suspecting the gate logic.
-2. Settings shows **Tilt to pause** as `off`, and switching it to `on` sticks.
-3. With it on and a focus session running, tipping the board up onto its edge
-   (or standing it against something) pauses within ~600 ms and blips. Picking
-   the board straight up and holding it level in hand is *expected* not to
-   pause it — the gate reads only the direction of gravity, not that the board
-   left the desk — so do not report that as a bug.
-4. Setting it back down flat resumes from the same remaining time, not from the
-   top.
-5. A manual Pause taken while the board is flat is **not** undone by the gate.
+1. **NOT READ.** RTT at boot should report `bmi323: chipid=0x0043 ok`. This was
+   not captured — the bounded RTT script was refused by the tooling's permission
+   layer, and item 2 answered the same question anyway (see below). If you do
+   read it and it says `??`, the part *answered* but with an unexpected chip ID:
+   `bmi323_init()`'s return value only reflects whether the bus read got an ACK,
+   not whether the ID matched, so Settings still shows `on`/`off` as normal.
+   Only a bus NAK (no ACK at all) clears `caps.imu` and makes Settings show
+   `no imu` — check which of the two you have before suspecting the gate logic.
+2. **PASS** — Settings showed **Tilt to pause** as `off`, and switching it to
+   `on` stuck. Reading `off` rather than `no imu` is itself proof the BMI323
+   ACK'd on I2C1, which is why item 1 was not needed to establish the part is
+   alive.
+3. **PASS** — with it on and a focus session running, tipping the board up onto
+   its edge paused within ~600 ms, and the blip sounded (so `SND_BLIP` fires
+   correctly from `sensor_cb`, not just from softkeys). Picking the board
+   straight up and holding it level in hand is *expected* not to pause it — the
+   gate reads only the direction of gravity, not that the board left the desk —
+   so do not report that as a bug.
+4. **PASS** — setting it back down flat resumed from the same remaining time,
+   not from the top.
+5. **NOT CONFIRMED.** A manual Pause taken while the board is flat must **not**
+   be undone by the gate. This is the load-bearing edge-trigger property, and it
+   is the most valuable item left on this list. It *is* covered on the host at
+   the gate level (`flat_again_reports_once` and
+   `primes_silently_then_lifts_once` in `tests/test_tilt.c` prove `tilt_feed`
+   never emits for the standing zone), so this check is confirmation rather than
+   sole evidence — but it has not been seen on hardware.
 6. Resting it on a shallow stand (~35°, inside the dead band) neither pauses nor
    resumes, and does not oscillate.
 7. With the setting off, tilting does nothing at all.
 8. A break is never paused by tilting, only focus.
 9. Auto-dim still tracks the room after the lux poll moved from `tick_cb` into
    `sensor_cb` — cover the sensor and confirm the backlight and LEDs drop.
+   Note the poll is now a true 500 ms rather than the effective ~600 ms it ran
+   at from `tick_cb`, so auto-dim converges about 17 % faster than before.
 10. Pressing **Default** while a session is tilt-paused strands the pause: it
     is expected to require a manual Resume afterward, since Default turns
     `tilt_pause` off and re-primes the gate.
