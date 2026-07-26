@@ -5,7 +5,14 @@ static int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v
 
 void app_settings_defaults(app_settings_t *s) {
     s->focus_min = 25; s->short_min = 5; s->long_min = 15; s->long_every = 4;
-    s->volume = 70; s->focus_tick = false; s->beacon_on = true; s->theme = 0;
+    /* beacon_on defaults false: unlike tilt_pause (which only reads this
+       device's own IMU and discloses nothing), beacon_on broadcasts the
+       user's configured name and focus state in clear, unauthenticated, at
+       near-max PA power, every ~20 s, to anything listening on 433.92 MHz,
+       with no pairing or consent gesture -- and buys nothing in the
+       overwhelmingly common single-device case beyond a 136 ms hitch and an
+       RF emission. Opt-in is the safer default. */
+    s->volume = 70; s->focus_tick = false; s->beacon_on = false; s->theme = 0;
     s->dvi_on = true;
     s->tilt_pause = false;
     memcpy(s->name, "WILI    ", APP_NAME_LEN);
@@ -70,4 +77,19 @@ void neighbor_expire(neighbor_table_t *t, uint32_t now_ms) {
     for (int i = 0; i < NEIGHBOR_MAX; i++)
         if (t->items[i].used && (now_ms - t->items[i].last_seen_ms) > NEIGHBOR_TTL_MS)
             t->items[i].used = false;
+}
+
+void app_beacon_msg(const app_settings_t *s, const pomodoro_t *p,
+                    uint32_t now_ms, beacon_msg_t *out) {
+    memcpy(out->name, s->name, APP_NAME_LEN);
+    switch (p->state) {
+        case PM_FOCUS:                          out->state = BST_FOCUS; break;
+        case PM_BREAK_SHORT: case PM_BREAK_LONG: out->state = BST_BREAK; break;
+        default:                                out->state = BST_IDLE;  break;
+    }
+    /* Both wire fields are single bytes. Minutes round down; completed
+       accumulates without bound across a long session. */
+    uint32_t mins = pomodoro_remaining_ms(p, now_ms) / 60000u;
+    out->minutes_left = (uint8_t)(mins > 255u ? 255u : mins);
+    out->completed    = (uint8_t)(p->stats.completed > 255u ? 255u : p->stats.completed);
 }

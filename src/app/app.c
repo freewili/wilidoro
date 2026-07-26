@@ -23,6 +23,7 @@ static lv_obj_t *s_scr[3];
 static dim_state_t s_dim;
 static tilt_state_t s_tilt;
 static uint32_t s_next_lux;
+static uint32_t s_next_beacon_ms;   /* next beacon transmit deadline */
 static uint32_t s_next_tick_ms;    /* next focus tick (0 = none scheduled) */
 static uint32_t s_alarm_next_ms;   /* next alarm re-ring while un-dismissed */
 static dvi_dirty_t s_dvi_dirty;
@@ -31,6 +32,17 @@ static dvi_dirty_t s_dvi_dirty;
    for ring-until-acknowledged; each ring is a one-shot sequence). */
 #define ALARM_REPEAT_MS 5000u
 #define FOCUS_TICK_MS   60000u
+
+/* Neighbour entries expire after NEIGHBOR_TTL_MS (60 s), so transmitting every
+   ~20 s gives a listener three chances before it drops us. */
+#define BEACON_TX_MS 20000u
+
+/* Spread transmits so two co-located units do not lock into permanent collision:
+   with a fixed 20 s period their 136 ms bursts can overlap for ~an hour before
+   crystal drift separates them. `now` differs per device, so its low bits are a
+   good enough jitter source; this needs decorrelation, not cryptographic
+   randomness. */
+#define BEACON_TX_JITTER_MS 3000u
 
 void app_sound(sound_id_t id) {
     sound_play(&s_app.sound, s_app.settings.theme, id, s_app.settings.volume, hal_now_ms());
@@ -113,6 +125,16 @@ static void sensor_cb(lv_timer_t *t) {
         }
     }
 
+    /* Beacon receive lives here rather than in tick_cb because the capture ring
+       fills at up to ~2000 edges/s during a burst; at 200 ms it could overrun and
+       lose the middle of a frame. Transmit stays on the slower tick -- a 20 s
+       period does not need 100 ms granularity. */
+    uint8_t wire[BEACON_WIRE_LEN];
+    if (hal_beacon_rx(wire)) {
+        beacon_msg_t m;
+        if (beacon_unpack(wire, &m)) neighbor_upsert(&s_app.neighbors, &m, now);
+    }
+
     /* auto-dim: poll lux at ~2 Hz through the core dimming curve */
     if ((int32_t)(now - s_next_lux) >= 0) {
         float lux;
@@ -163,10 +185,24 @@ static void tick_cb(lv_timer_t *t) {
         else if (b == HAL_BTN_CANCEL || b == HAL_BTN_HOME) app_goto(SCREEN_TIMER);
     }
 
-    /* beacon rx -> neighbor table (Plan C makes tx/rx real; sim fakes rx) */
-    uint8_t wire[BEACON_WIRE_LEN];
-    if (hal_beacon_rx(wire)) { beacon_msg_t m; if (beacon_unpack(wire, &m)) neighbor_upsert(&s_app.neighbors, &m, now); }
     neighbor_expire(&s_app.neighbors, now);
+
+    /* Beacon transmit. A frame is ~136 ms of blocking GPIO toggling, so never
+       start one while a chime is sounding: the stall would stretch the tone
+       audibly, which is the only genuinely bad symptom. The countdown only
+       updates once a second, so the visual hitch is near-invisible. */
+    if (s_app.settings.beacon_on && (int32_t)(now - s_next_beacon_ms) >= 0) {
+        if (!sound_active(&s_app.sound)) {
+            beacon_msg_t out;
+            app_beacon_msg(&s_app.settings, &s_app.pomo, now, &out);
+            uint8_t tx[BEACON_WIRE_LEN];
+            beacon_pack(&out, tx);
+            hal_beacon_tx(tx);
+            s_next_beacon_ms = now + BEACON_TX_MS - (BEACON_TX_JITTER_MS / 2u)
+                             + (now % BEACON_TX_JITTER_MS);
+        }
+        /* Sound playing: leave the deadline expired and retry on the next tick. */
+    }
 
     /* per-theme LED pattern */
     timer_view_t lv = timer_view_make(&s_app.pomo, s_app.alarm_active, now);
@@ -207,6 +243,7 @@ void app_init(void) {
     tilt_init(&s_tilt);
     dvi_dirty_reset(&s_dvi_dirty);
     s_next_lux = 0;
+    s_next_beacon_ms = 0;
     s_app.screen = SCREEN_TIMER; s_app.alarm_active = false;
     sound_reset(&s_app.sound);
     s_next_tick_ms = 0; s_alarm_next_ms = 0;

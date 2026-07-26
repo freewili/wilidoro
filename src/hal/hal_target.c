@@ -7,10 +7,16 @@
 #include "bl_pwm.h"
 #include "sensors/opt4001.h"
 #include "sensors/bmi323.h"
+#include "radio/cc1101.h"
+#include "radio/ook_tx.h"
+#include "radio/gdo_capture.h"
+#include "beacon_rx.h"
+#include "platform/ioexp.h"
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 #include "platform/diag.h"
+#include <string.h>
 
 /* uartkbd_btn_t (uartkbd_parse.h) does NOT share hal_btn_t's (hal.h) d-pad
  * order: uartkbd numbers NAV_CENTER before NAV_UP/DOWN/LEFT/RIGHT (5..9),
@@ -131,6 +137,12 @@ static void audio_pump(uint32_t now) {
 static bool s_light;
 static bool s_imu;
 
+/* 433.92 MHz ISM. A hardware-routing fact, not app policy, so it lives here
+   rather than in core/beacon.h beside the wire format. */
+#define BEACON_HZ 433920000u
+static bool s_radio;
+static beacon_rx_t s_brx;
+
 /* ---------------- DVI --------------------------------------------------
  * 640x480p60 over the HSTX block (GPIO 12-19). The stored video region is
  * 480x240, sized by the HSTX_VID_*_MAX compile definitions in the root
@@ -148,6 +160,17 @@ _Static_assert(HAL_DVI_W == HSTX_VID_W_MAX && HAL_DVI_H == HSTX_VID_H_MAX,
                "HAL_DVI_* must match the HSTX_VID_*_MAX compile definitions");
 static bool s_dvi;
 
+/* Defined below, next to hal_beacon_tx; forward-declared so hal_init (which
+   comes first in the file) can call it at bring-up. */
+static void radio_loopback_selftest(void);
+
+/* Put the CC1101 back into async-transparent OOK RX, where GDO0 carries the
+   demodulated data edges that gdo_capture timestamps. Both bring-up and the end
+   of every transmit return here, so listening is the resting state. */
+static void radio_listen(void) {
+    cc1101_monitor_rx(BEACON_HZ, CC1101_MOD_ASK_OOK);
+}
+
 void hal_init(void) {
     uartkbd_init();
     ws2812_init(pio1, (uint)pio_claim_unused_sm(pio1, true), PIN_LED_DATA);
@@ -159,6 +182,19 @@ void hal_init(void) {
     /* Same I2C1 bus as the OPT4001 above and the codec's control registers
        below. bmi323_init() DIAGs its own chipid check. */
     s_imu = bmi323_init();
+
+    /* Route a CC1101 antenna before any radio SPI traffic. ioexp_antenna talks
+       to the PCAL6524 over I2C1 -- the same bus sensor_cb owns -- so it must stay
+       here in init, before any timer exists, and never move into a callback. */
+    ioexp_antenna(ANT_CC1101_433);
+    s_radio = cc1101_init();          /* DIAGs PARTNUM/VERSION itself */
+    DIAG("radio: cc1101 %s\n", s_radio ? "ok" : "ABSENT (beacon disabled)");
+    if (s_radio) {
+        gdo_capture_init();
+        gdo_capture_start();
+        radio_listen();
+        radio_loopback_selftest();
+    }
 
     /* Audio: codec regs over I2C1, then MCLK + PIO0 I2S. Playback only -- we do
        NOT call audio_capture_start(), so wilidoro registers no DMA_IRQ_0 handler.
@@ -234,8 +270,195 @@ bool hal_imu(float *ax, float *ay, float *az) {
 }
 bool hal_lux(float *lux) { return s_light && opt4001_read(lux); }
 
-void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }                       /* Plan C */
-bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }               /* Plan C */
+/* Chunk size for draining the PIO2 capture ring. Shared by hal_beacon_tx's
+   post-transmit flush, the loopback self-test, and hal_beacon_rx. */
+#define RX_DRAIN_CHUNK 128u
+
+/* Drain the PIO2 capture ring dry, discarding every word, in a bounded loop
+   (so a somehow-still-full ring can't spin this forever). Used wherever
+   leftover ring contents must not reach the framer: hal_beacon_tx's
+   post-transmit anti-echo drain, and the loopback self-test's pre-transmit
+   (stale debris) and post-test (its own LOOPBACK echo) drains. Always called
+   as a sibling of beacon_tx_raw() -- before or after it, never nested inside
+   its call chain -- see the stack-peak comment on beacon_tx_raw's durs[]. */
+static void drain_ring_dry(void) {
+    for (int rounds = 0; rounds < 64; rounds++) {
+        uint32_t discard[RX_DRAIN_CHUNK];
+        if (gdo_capture_drain(discard, RX_DRAIN_CHUNK) < RX_DRAIN_CHUNK) break;
+    }
+}
+
+/* The actual bit-banging, shared by hal_beacon_tx and the loopback self-test
+   below: encode and blast the wire frame out GDO0, then return the radio to
+   listening. Deliberately does NOT touch the capture ring or the framer --
+   hal_beacon_tx and the self-test want opposite things done with the echo
+   this produces (discarded vs. decoded), so that decision lives in the two
+   callers, not here. Returns false (nothing sent) if the frame was empty. */
+static bool beacon_tx_raw(const uint8_t wire[BEACON_WIRE_LEN]) {
+    /* durs[] here (1104 B) plus beacon_ook_encode's own uint8_t hb[272] add up
+       to 1376 B on top of whichever function calls beacon_tx_raw(). The worst
+       boot-path caller is radio_loopback_selftest: its own round-loop
+       durs[RX_DRAIN_CHUNK] (512 B) plus a few small locals (sent/got/m/ints)
+       contribute roughly another 570 B, for a worst-case peak around 1.9 KB
+       against a .stack_dummy of 2048 B -- worst-case because it assumes GCC
+       does NOT share stack slots between that round-loop buffer and anything
+       else in the same function. drain_ring_dry()'s own 512 B buffer is NOT
+       part of this peak: it is only ever called as a sibling of
+       beacon_tx_raw() (before or after it), never nested inside this call
+       chain, so the two frames are never concurrently on the stack -- if that
+       ever changes, re-derive this figure. Safe only by accident regardless:
+       .scratch_x/.scratch_y are both 0 B in this build, so the stack has
+       ~8 KB of unused room below it before hitting anything real. Not a
+       designed margin -- re-check this if either scratch region ever gets
+       used. */
+    uint32_t durs[BEACON_MAX_DURS];
+    bool start_level = false;
+    size_t n = beacon_ook_encode(wire, durs, BEACON_MAX_DURS, &start_level);
+    if (n == 0) return false;
+
+    cc1101_tx_ook_start(BEACON_HZ);              /* key the carrier; GDO0 becomes SIO */
+    ook_tx_send(durs, (uint32_t)n, start_level);
+    /* Re-attach the PIO to GDO0 BEFORE stopping TX: this makes the pad a PIO
+       input while the CC1101 is still 3-stated, so the chip's own driver
+       re-enables into an already-released pin instead of briefly fighting the
+       MCU's SIO drive (the previous order double-drove the pin for one call). */
+    gdo_capture_attach_pin();                    /* undo the SIO takeover */
+    cc1101_tx_ook_stop();
+    radio_listen();
+    return true;
+}
+
+/* Blocking: a frame is 136 bits x 2 half-bits x 500 us = ~136 ms of GPIO
+   toggling. ook_tx_send drives GDO0 (GPIO32) directly and touches no SPI; only
+   the short start/stop register bursts do, and those take the shared bus through
+   the BSP's own spi_bus arbiter. The caller gates the cadence. */
+void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) {
+    if (!s_radio) return;
+    if (!beacon_tx_raw(wire)) return;
+
+    /* PIO2 samples the GDO0 pad no matter who drives it -- the same property
+       the loopback self-test below relies on -- so every burst we just sent
+       lands right back in the capture ring as if a peer had sent it, and it
+       was captured live during the ~136 ms blocking send above (the ring
+       fills in real time, independent of anything this function does after).
+       Left alone, the next hal_beacon_rx() would decode our own frame and
+       neighbor_upsert() would file this device under its own name. Drain the
+       echo out before it reaches the framer, and reset the framer itself:
+       the burst's edges arrived with no real trailing gap (that is the whole
+       F1 problem) and would otherwise corrupt a partially-assembled peer
+       segment that was open when we started transmitting. */
+    drain_ring_dry();
+    beacon_rx_init(&s_brx);
+}
+
+/* One-shot self-test, run at bring-up (from hal_init, BEFORE app_init runs --
+   so this transmits one real frame at every boot regardless of the app's
+   `beacon_on` setting. Harmless today since settings are not persisted across
+   boots, but it will be a real bug -- a boot-time transmit the user's saved
+   "beacon off" preference cannot suppress -- the moment they are.)
+   PIO2 samples the GDO0 pad even while ook_tx_send drives it as an SIO output
+   -- wilibsp's hello_cc1101 sends 24 pulses and drains exactly 24 edges -- so
+   transmitting our own beacon and draining the capture exercises the whole
+   chain: pack -> ook_encode -> ook_tx timing -> PIO2/DMA capture -> framer ->
+   ook_decode -> unpack.
+   Everything except the RF air path and the CC1101's own demodulator, neither of
+   which has ever been demonstrated on this hardware by anyone.
+   It fails closed: if the pad-sampling assumption does not hold, the decode
+   simply fails and the log says so. It cannot produce a false pass.
+
+   Calls beacon_tx_raw() directly rather than hal_beacon_tx(): this test's
+   entire premise is decoding the device's own echo, which is exactly what
+   hal_beacon_tx's anti-self-reception drain (see above) exists to discard.
+   Going through hal_beacon_tx here would make the drain eat the self-test's
+   own burst before this function ever got to look at it, and the test would
+   report FAILED unconditionally. */
+static void radio_loopback_selftest(void) {
+    if (!s_radio) return;
+    beacon_msg_t m;
+    memcpy(m.name, "LOOPBACK", BEACON_NAME_LEN);
+    m.state = BST_FOCUS; m.minutes_left = 42; m.completed = 7;
+    uint8_t sent[BEACON_WIRE_LEN];
+    beacon_pack(&m, sent);
+
+    beacon_rx_init(&s_brx);
+
+    /* beacon_rx_init only resets the framer struct, not gdo_capture's own
+       tail -- drain any pre-existing capture-ring debris now, before we
+       transmit, or it prepends to the segment under test and can corrupt it. */
+    drain_ring_dry();
+
+    beacon_tx_raw(sent);                     /* also returns the radio to listening */
+
+    /* A gap first, so the framer knows the following run is high. */
+    uint8_t got[BEACON_WIRE_LEN];
+    bool ok = false;
+    (void)beacon_rx_push(&s_brx, BEACON_GAP_US * 4u, got);
+    for (int round = 0; round < 8 && !ok; round++) {
+        uint32_t durs[RX_DRAIN_CHUNK];
+        uint32_t n = gdo_capture_drain(durs, RX_DRAIN_CHUNK);
+        for (uint32_t i = 0; i < n && !ok; i++)
+            if (beacon_rx_push(&s_brx, durs[i], got)) ok = true;
+        if (!ok) sleep_ms(5);
+    }
+    /* The burst's trailing low run never gets a natural closing gap (F1) --
+       flush once the drain rounds above are done to close whatever segment is
+       still open. By this point beacon_tx_raw has long since returned (it
+       blocks for the whole ~136 ms burst), so every edge is already sitting
+       in the ring; the flush is what actually closes the frame. */
+    if (!ok) ok = beacon_rx_flush(&s_brx, got);
+    if (ok) ok = (memcmp(sent, got, BEACON_WIRE_LEN) == 0);
+    DIAG("beacon: loopback %s\n", ok ? "ok" : "FAILED");
+
+    beacon_rx_init(&s_brx);                  /* discard self-test state */
+    /* And drain the ring dry: this test's own burst is otherwise still
+       sitting there and would later be decoded by hal_beacon_rx() as a
+       "LOOPBACK" neighbour -- the same self-reception bug F2 fixes for
+       normal operation, just via this test instead. */
+    drain_ring_dry();
+}
+
+/* Drain the PIO2 capture ring fully and feed the framer. The loop matters: during
+   a burst the line carries up to ~2000 edges/s, so a single fixed-size drain can
+   fall behind and lose the middle of a frame. Draining until a short read means
+   the chunk size stops mattering.
+
+   Push the WHOLE drained chunk before returning, keeping only the FIRST decoded
+   frame rather than returning as soon as one decodes: the run that closes frame
+   N can land in the same 100 ms poll as the runs that start frame N+1 (a frame
+   takes ~136 ms to transmit, but the tail of one and the head of the next
+   sharing a poll is routine), so an early return would systematically discard
+   N+1's leading edges. Do not add a pending-duration queue for this -- pushing
+   everything and remembering only the first hit is enough.
+
+   If the whole poll drains zero edges and a segment is still open, the burst is
+   provably over (zero edges across 100 ms is three orders of magnitude past the
+   ~1 ms longest legal run) and the line has gone quiet with no natural gap
+   coming: flush it. Do NOT flush after a partial drain -- that would try_decode
+   a frame that is still arriving, fail, and destroy it. */
+bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
+    if (!s_radio) return false;
+    uint32_t durs[RX_DRAIN_CHUNK];
+    uint8_t frame[BEACON_WIRE_LEN];
+    bool got = false;
+    uint32_t total = 0;
+    for (;;) {
+        uint32_t n = gdo_capture_drain(durs, RX_DRAIN_CHUNK);
+        total += n;
+        for (uint32_t i = 0; i < n; i++)
+            if (beacon_rx_push(&s_brx, durs[i], frame) && !got) {
+                memcpy(wire, frame, BEACON_WIRE_LEN);
+                got = true;
+            }
+        if (n < RX_DRAIN_CHUNK) break;   /* ring is empty */
+    }
+    if (total == 0) {
+        if (beacon_rx_flush(&s_brx, frame) && !got) {
+            memcpy(wire, frame, BEACON_WIRE_LEN);
+            got = true;
+        }
+    }
+    return got;
+}
 
 bool hal_dvi_surface(hal_dvi_surface_t *s) {
     if (!s_dvi) return false;
@@ -249,7 +472,7 @@ bool hal_dvi_surface(hal_dvi_surface_t *s) {
 void hal_dvi_enable(bool on) { if (s_dvi) hstx_dvi_enable(on); }
 
 hal_caps_t hal_caps(void) {
-    hal_caps_t c = { .radio=false,.imu=s_imu,.light=s_light,.audio=s_audio_ok,
+    hal_caps_t c = { .radio=s_radio,.imu=s_imu,.light=s_light,.audio=s_audio_ok,
                      .buttons=true,.leds=true,.dvi=s_dvi };
     return c;
 }
