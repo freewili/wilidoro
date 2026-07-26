@@ -31,6 +31,8 @@ The DVI output on a wall through a pocket projector — same session, same theme
 
 ![DVI output projected on a wall](docs/images/dvi-projector.jpg)
 
+The projector in that photo is an inexpensive [1080p WiFi/Bluetooth mini projector](https://www.amazon.com/dp/B0F7RR3YC6), fed from the board's HSTX pins through a plain DVI→HDMI cable. Nothing about it is special, which is the point: it accepted the 640×480p60 signal at the board's default 250 MHz clock — a pixel clock 0.7 % below the 25.175 MHz standard — and upscaled it to the wall without complaint. See [`docs/hardware-notes.md`](docs/hardware-notes.md#dvi-output--region-size-and-pixel-clock) for what to do if some other display refuses to sync.
+
 ## Hardware
 
 | Part | Role | Bus |

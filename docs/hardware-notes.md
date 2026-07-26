@@ -133,6 +133,13 @@ balance. Crop to the panel before judging any palette.
 at the board default 250 MHz — i.e. at the 0.7 %-low 25.0 MHz pixel clock, with
 no clock change needed.*
 
+**The display under test** is an inexpensive
+[1080p WiFi/Bluetooth mini projector](https://www.amazon.com/dp/B0F7RR3YC6),
+driven from the HSTX pins through a passive DVI→HDMI cable. It is a commodity
+part with no relevant tolerance claims in its listing — worth naming only so the
+one hardware datapoint below is attributable to a specific device, and so a
+future "it doesn't sync" can be told apart from "this projector is lenient".
+
 The RP2350 HSTX block drives 640×480p60 DVI on GPIO 12–19. Wilidoro shows a
 room-readable focus view there — state word, huge `MM:SS`, session dots — in the
 active theme's colors. The LCD is unaffected and remains the control surface.
@@ -166,7 +173,8 @@ to prove nothing escapes.
 Item 1 is **DONE** (2026-07-25). The rest still need a session with the display
 connected.
 
-1. **PASS** — a mini projector on HDMI synced and showed the view at 25.0 MHz,
+1. **PASS** — the mini projector named above, on HDMI, synced and showed the
+   view at 25.0 MHz,
    i.e. at the board default 250 MHz with no clock change. If some other display
    refuses, `board_init_clk(252000)` gives an exact 25.2 MHz; confirm the chimes
    still sound correct afterwards, since that moves fs to 16137 Hz.
