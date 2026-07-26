@@ -154,10 +154,13 @@ connected.
 *Not yet hardware-verified. The values below are reasoned defaults, chosen at
 the desk and confirmed only in the simulator.*
 
-The board lying face-up and level is the running orientation; lift or tilt it and
-a focus session pauses. `src/core/tilt.c` thresholds `az/‖a‖` — the cosine of the
-tilt away from level — rather than raw `az`, because a 2 g jolt can push raw `az`
-past the flat threshold while the board is nowhere near level.
+The board lying face-up and level is the running orientation; tilt it out of
+level and a focus session pauses. `src/core/tilt.c` thresholds `az/‖a‖` — the
+cosine of the tilt away from level — rather than raw `az`, because a 2 g jolt
+can push raw `az` past the flat threshold while the board is nowhere near
+level. This is orientation only, not motion: picking the board up and holding
+it level does not pause it, because the gate never looks at `‖a‖` deviation,
+only the direction of gravity.
 
 | tunable | value | meaning |
 |---|---|---|
@@ -171,6 +174,13 @@ choices in the same spirit as `LED_BRIGHT_MAX = 40` and `TONE_AMP_CAP = 160`, an
 they belong here rather than upstream in the BSP. If a lift is missed, lower
 `TILT_LIFT_COS`; if the desk shaking pauses a session, raise `TILT_HOLD_MS`.
 
+In practice `TILT_HOLD_MS` is not "persist this long" but "N consecutive
+in-zone samples": any sample that lands back in the *previously committed*
+zone clears the pending candidate and restarts the count, so 600 ms at the
+100 ms cadence actually requires the 7th consecutive sample in the new zone.
+This is stricter noise rejection than the table implies, not looser — it is
+what keeps a reading that dithers right at the threshold from chattering.
+
 **I2C1 is shared** by the BMI323 (0x68), the OPT4001, and the NAU88C10's control
 registers. A single 100 ms `sensor_cb` in `src/app/app.c` owns every sensor read
 on it — the IMU each call, lux every fifth — rather than two independent pollers.
@@ -182,12 +192,18 @@ With the setting off, `hal_imu` is never called and the bus sees no extra traffi
 
 None of this has been run. **Ask before flashing.**
 
-1. RTT at boot reports `bmi323: chipid=0x0043 ok`. If it says `??`, the part did
-   not answer and Settings will show `no imu` — check that before suspecting the
-   gate logic.
+1. RTT at boot reports `bmi323: chipid=0x0043 ok`. If it says `??`, the part
+   *answered* but with an unexpected chip ID — `bmi323_init()`'s return value
+   only reflects whether the bus read got an ACK, not whether the ID matched,
+   so Settings still shows `on`/`off` as normal. Only a bus NAK (no ACK at
+   all) clears `caps.imu` and makes Settings show `no imu` — check which of
+   the two you have before suspecting the gate logic.
 2. Settings shows **Tilt to pause** as `off`, and switching it to `on` sticks.
-3. With it on and a focus session running, lifting the board off the desk pauses
-   within ~600 ms and blips.
+3. With it on and a focus session running, tipping the board up onto its edge
+   (or standing it against something) pauses within ~600 ms and blips. Picking
+   the board straight up and holding it level in hand is *expected* not to
+   pause it — the gate reads only the direction of gravity, not that the board
+   left the desk — so do not report that as a bug.
 4. Setting it back down flat resumes from the same remaining time, not from the
    top.
 5. A manual Pause taken while the board is flat is **not** undone by the gate.
@@ -197,6 +213,9 @@ None of this has been run. **Ask before flashing.**
 8. A break is never paused by tilting, only focus.
 9. Auto-dim still tracks the room after the lux poll moved from `tick_cb` into
    `sensor_cb` — cover the sensor and confirm the backlight and LEDs drop.
+10. Pressing **Default** while a session is tilt-paused strands the pause: it
+    is expected to require a manual Resume afterward, since Default turns
+    `tilt_pause` off and re-primes the gate.
 
 ---
 

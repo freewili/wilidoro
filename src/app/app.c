@@ -81,7 +81,7 @@ static void route_softkey(int col) {
    BMI323 and the NAU88C10's control registers all share that bus, so one poller
    keeps its traffic predictable instead of two independent ones interleaving.
    The IMU is read every call -- 6 samples per TILT_HOLD_MS window, ~0.35 ms of
-   bus time each, so ~0.4 % duty -- and the light sensor every fifth. With
+   bus time each, so ~0.35 % duty -- and the light sensor every fifth. With
    tilt_pause off the IMU is not touched at all. */
 static void sensor_cb(lv_timer_t *t) {
     (void)t;
@@ -97,13 +97,13 @@ static void sensor_cb(lv_timer_t *t) {
            states; these state checks are what confine the rule to focus. */
         switch (tilt_feed(&s_tilt, ax, ay, az, now)) {
             case TILT_EV_LIFTED:
-                if (s_app.pomo.state == PM_FOCUS) {
+                if (tilt_gate_pauses(s_app.pomo.state)) {
                     pomodoro_pause(&s_app.pomo, now);
                     app_sound(SND_BLIP);
                 }
                 break;
             case TILT_EV_FLAT:
-                if (s_app.pomo.state == PM_PAUSED && s_app.pomo.resume_state == PM_FOCUS) {
+                if (tilt_gate_resumes(s_app.pomo.state, s_app.pomo.resume_state)) {
                     pomodoro_resume(&s_app.pomo, now);
                     app_sound(SND_BLIP);
                 }

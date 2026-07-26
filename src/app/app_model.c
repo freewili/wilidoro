@@ -24,6 +24,13 @@ void app_settings_adjust_volume(app_settings_t *s, int delta) {
 }
 void app_settings_cycle_theme(app_settings_t *s) { s->theme = (uint8_t)((s->theme + 1) % 3); }
 
+bool tilt_gate_pauses(pm_state_t state) {
+    return state == PM_FOCUS;
+}
+bool tilt_gate_resumes(pm_state_t state, pm_state_t resume_state) {
+    return state == PM_PAUSED && resume_state == PM_FOCUS;
+}
+
 void neighbor_table_init(neighbor_table_t *t) {
     for (int i = 0; i < NEIGHBOR_MAX; i++) t->items[i].used = false;
 }

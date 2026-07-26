@@ -84,12 +84,14 @@ TEST motion_is_rejected_by_normalization(void) {
 TEST freefall_samples_are_discarded(void) {
     tilt_state_t s; tilt_init(&s);
     uint32_t t = 0; int n = 0;
-    feed(&s, FLAT_X, FLAT_Y, FLAT_Z, &t, 500, &n);       /* primed flat */
-    /* |a| = 0.05, below TILT_MAG_MIN: ignored, zone untouched. */
-    ASSERT_EQ(TILT_EV_NONE, feed(&s, 0.0f, 0.0f, 0.05f, &t, 2000, &n));
+    feed(&s, UP_X, UP_Y, UP_Z, &t, 500, &n);            /* primed lifted */
+    /* |a| = 0.05, below TILT_MAG_MIN: ignored, zone untouched. Primed lifted
+       (not flat) so this sample's c = 1.0 would read as a return to flat --
+       a reportable zone change -- if the magnitude floor did not discard it. */
+    ASSERT_EQ(TILT_EV_NONE, feed(&s, 0.0f, 0.0f, 0.05f, &t, 2000, &n));  /* c would be 1.0 */
     ASSERT_EQ(0, n);
-    /* State is intact: a genuine lift still reports normally afterwards. */
-    ASSERT_EQ(TILT_EV_LIFTED, feed(&s, UP_X, UP_Y, UP_Z, &t, 1000, &n));
+    /* State is intact: a genuine return to flat still reports normally afterwards. */
+    ASSERT_EQ(TILT_EV_FLAT, feed(&s, FLAT_X, FLAT_Y, FLAT_Z, &t, 1000, &n));
     ASSERT_EQ(1, n);
     PASS();
 }
@@ -117,6 +119,28 @@ TEST first_sample_inside_the_band_defers_priming(void) {
     PASS();
 }
 
+TEST hold_survives_the_uint32_rollover(void) {
+    tilt_state_t s; tilt_init(&s);
+    /* Prime flat well before the wrap. */
+    ASSERT_EQ(TILT_EV_NONE, tilt_feed(&s, FLAT_X, FLAT_Y, FLAT_Z, UINT32_MAX - 10000u));
+
+    /* Arm the candidate ~500 ms before UINT32_MAX, so the hold window itself
+       straddles the wrap. */
+    uint32_t armed_at = UINT32_MAX - 500u;
+    ASSERT_EQ(TILT_EV_NONE, tilt_feed(&s, UP_X, UP_Y, UP_Z, armed_at));
+
+    /* 599 ms of elapsed time later (the counter has wrapped past UINT32_MAX
+       by now) must still be one sample short of the 600 ms hold. A naive
+       `now < deadline + HOLD` rewrite gets this wrong: deadline + HOLD
+       overflows and wraps to a small number, so that form would already have
+       fired 500 ms early, right at the rollover itself. */
+    ASSERT_EQ(TILT_EV_NONE, tilt_feed(&s, UP_X, UP_Y, UP_Z, armed_at + 599u));
+
+    /* Exactly TILT_HOLD_MS of elapsed time after arming, the event fires. */
+    ASSERT_EQ(TILT_EV_LIFTED, tilt_feed(&s, UP_X, UP_Y, UP_Z, armed_at + 600u));
+    PASS();
+}
+
 GREATEST_MAIN_DEFS();
 int main(int argc, char **argv) {
     GREATEST_MAIN_BEGIN();
@@ -128,5 +152,6 @@ int main(int argc, char **argv) {
     RUN_TEST(freefall_samples_are_discarded);
     RUN_TEST(flat_again_reports_once);
     RUN_TEST(first_sample_inside_the_band_defers_priming);
+    RUN_TEST(hold_survives_the_uint32_rollover);
     GREATEST_MAIN_END();
 }

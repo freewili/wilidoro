@@ -5,15 +5,18 @@
 design" below.*
 
 Plan C3 gives the BMI323 accelerometer exactly one job: **the board lying
-face-up and level is the running orientation.** Lift or tilt it and the focus
-session pauses; set it back down and it resumes.
+face-up and level is the running orientation.** Tilt it out of level — tip it
+onto an edge, stand it up, turn it over — and the focus session pauses; set it
+back down flat and it resumes.
 
 ## 1. Behaviour
 
 One rule, off by default, enabled by a Settings toggle:
 
 - The board **lying face-up and level** is the *running* orientation.
-- **Lift or tilt it** while a focus session runs → the session **pauses**.
+- **Tilt it out of level** while a focus session runs → the session **pauses**
+  (the gate reads only the direction of gravity, so picking the board up and
+  holding it level does not pause it).
 - **Set it back down flat** while paused-from-focus → the session **resumes**.
 - Breaks are never gated. Idle is never started. Nothing else changes.
 
@@ -108,6 +111,14 @@ pollers, and trims the accreting `tick_cb` (a logged backlog item).
 The lux deadline also becomes wrap-safe (`(int32_t)(now - s_next_lux) >= 0`) to
 match every other deadline in `app.c`, since the line is moving anyway.
 
+This move is not quite cadence-neutral. The 500 ms deadline used to be sampled
+by `tick_cb`'s 200 ms timer, so the real mean interval between lux reads was
+~600 ms; sampled by `sensor_cb`'s 100 ms timer it is a true 500 ms. `dim_apply`
+is a fixed-α EMA (`DIM_ALPHA = 0.25`), so its wall-clock time constant drops
+from ~2.1 s to ~1.75 s — auto-dim now converges about 17 % faster. Benign, and
+arguably closer to the "~2 Hz" this section already claimed, but worth knowing
+before retuning `DIM_ALPHA`.
+
 ## 4. Settings and UI
 
 - `bool tilt_pause` in `app_settings_t`, **default off**.
@@ -124,14 +135,26 @@ match every other deadline in `app.c`, since the line is moving anyway.
 
 ## 5. Error handling
 
-- `bmi323_init()` failing leaves `caps.imu` false and `hal_imu()` returning
-  false: the feature is inert and the Settings row says so.
+- `bmi323_init()`'s return value reflects only whether the chip-ID read got a
+  bus ACK, not whether the ID matched — a wrong ID is DIAG-logged as `??` but
+  still leaves `caps.imu` true. Only a bus NAK (no ACK at all) clears
+  `caps.imu` and makes `hal_imu()` return false: only then is the feature
+  inert and the Settings row says so.
 - A transient `bmi323_read` failure skips that sample. Wrap-safe subtraction
   means the resulting gap in the hold timer is harmless.
 - `pomodoro_pause()` and `pomodoro_resume()` are already guarded no-ops outside
   their valid states. The app-layer gates (`state == PM_FOCUS` to pause,
   `state == PM_PAUSED && resume_state == PM_FOCUS` to resume) are belt-and-braces
   on top of that, and are what confine the rule to focus sessions.
+- `hal_caps().imu` is latched once in `hal_init` and never re-checked. A BMI323
+  that dies at runtime is invisible: `sensor_cb` silently stops feeding the
+  gate, an existing tilt-pause persists until the user presses Resume by hand,
+  and Settings keeps reading `on`.
+- Pressing **Default** while a session is tilt-paused strands the pause:
+  Default sets `tilt_pause = false` and re-primes, so the gate goes inert and
+  setting the board back down will not resume it. This is correct given
+  Default's existing semantics (identical to `dvi_on`), but it is the one
+  sequence where the gate pauses a session and then cannot un-pause it.
 
 ## 6. Testing
 

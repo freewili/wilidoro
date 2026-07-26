@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "beacon.h"
+#include "pomodoro.h"
 
 #define APP_NAME_LEN    BEACON_NAME_LEN   /* 8 */
 #define NEIGHBOR_MAX    8
@@ -25,6 +26,12 @@ void app_settings_adjust_short(app_settings_t *s, int delta);   /* clamp 1..30, 
 void app_settings_adjust_long(app_settings_t *s, int delta);    /* clamp 5..60, step 5 */
 void app_settings_adjust_volume(app_settings_t *s, int delta);  /* clamp 0..100, step 10 */
 void app_settings_cycle_theme(app_settings_t *s);               /* 0->1->2->0 */
+
+/* Confine tilt-to-pause to focus sessions: pausing requires a running focus
+   session; resuming requires a pause that was itself taken from focus (so a
+   manually-paused break is never resumed by setting the board down flat). */
+bool tilt_gate_pauses(pm_state_t state);
+bool tilt_gate_resumes(pm_state_t state, pm_state_t resume_state);
 
 typedef struct {
     char           name[APP_NAME_LEN];
