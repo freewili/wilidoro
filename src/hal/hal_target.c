@@ -44,14 +44,16 @@ static bool map_btn(uartkbd_btn_t in, hal_btn_t *out) {
  *    size, as audio_i2s_duplex_play_loop's read-ring requires.
  *  - The requested pitch is snapped to a whole number of sine cycles inside the
  *    buffer, so the ring wraps phase-continuously (no seam click). The grid is
- *    AUDIO_FS_HZ/TONE_FRAMES ~ 15.6 Hz; src/app/sound.c keeps every note >= 440 Hz
+ *    s_audio_fs_hz/TONE_FRAMES ~ 15.6 Hz; src/app/sound.c keeps every note >= 440 Hz
  *    so the resulting detune stays under ~2 %.
  *  - Duration is a deadline serviced by hal_pump(), never a busy-wait: hal_tone
  *    must not block the LVGL main loop.
- *  - AUDIO_FS_HZ is the REAL rate: MCLK is an integer PWM divide of the 250 MHz
- *    clk_sys (250e6/61 = 4.0984 MHz), so fs = 4.0984e6/256 = 16009 Hz, not 16000.
- *    audio_i2s_duplex_init() still takes the nominal 16000 (it derives the divider
- *    from it). See wilibsp/docs/hardware/facts.md, "Audio: lock LRCK to MCLK/256".
+ *  - s_audio_fs_hz is the REAL rate, computed at runtime in hal_init(): MCLK is
+ *    an integer PWM divide of clk_sys, so fs = clk_sys/(ticks*256) -- 16009 Hz
+ *    at our 250 MHz board clock (250e6/61 = 4.0984 MHz, 4.0984e6/256 = 16009),
+ *    not the nominal 16000. audio_i2s_duplex_init() still takes the nominal
+ *    16000 (it derives the divider from it). See wilibsp/docs/hardware/facts.md,
+ *    "Audio: lock LRCK to MCLK/256".
  *  - The speaker is 0.5 W (wilibsp AGENTS.md invariant 10). Every tone's amplitude
  *    is SCALED (not clamped, so the table keeps its dynamics) by TONE_AMP_CAP/255,
  *    and the output stage is powered down after AUDIO_IDLE_MS of silence.
@@ -138,6 +140,10 @@ static bool s_light;
  * Scanout is a zero-IRQ DMA pair, so this registers no DMA_IRQ_0 handler. */
 #define HAL_DVI_W 480
 #define HAL_DVI_H 240
+/* The BSP sizes framebuf[] from these at compile time (root CMakeLists.txt sets
+   them); a silent drift would leave DVI permanently unavailable at runtime. */
+_Static_assert(HAL_DVI_W == HSTX_VID_W_MAX && HAL_DVI_H == HSTX_VID_H_MAX,
+               "HAL_DVI_* must match the HSTX_VID_*_MAX compile definitions");
 static bool s_dvi;
 
 void hal_init(void) {

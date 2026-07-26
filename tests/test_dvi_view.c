@@ -103,12 +103,21 @@ TEST out_of_range_theme_clamps_to_zero(void) {
     PASS();
 }
 
+/* Confounder guard: break_phase also flips the state WORD (FOCUS vs BREAK), so
+   a whole-buffer memcmp would pass even if the foreground-colour selection were
+   hardcoded. Sample a pixel inside a digit stroke instead -- 08:08's units-of-
+   minutes digit ('8') has a middle segment at its vertical/horizontal centre --
+   and assert that specific pixel's colour actually differs between the two
+   renders (same digit-centre math as seven_segment_digits_are_correct). */
 TEST break_phase_recolors(void) {
-    timer_view_t f = mk(false, false, false, false, 5u*60u*1000u, 1, 4);
-    timer_view_t b = mk(false, false, false, true,  5u*60u*1000u, 1, 4);
+    timer_view_t f = mk(false, false, false, false, (8u*60u + 8u) * 1000u, 1, 4);
+    timer_view_t b = mk(false, false, false, true,  (8u*60u + 8u) * 1000u, 1, 4);
     dvi_surface_t sa = surf(g_buf);  dvi_view_render(0, &f, &sa);
     dvi_surface_t sb = surf(g_buf2); dvi_view_render(0, &b, &sb);
     ASSERT(memcmp(g_buf, g_buf2, sizeof g_buf) != 0);
+    const int y_mid = 68 + 120 / 2;          /* DIG_Y + DIG_H/2 */
+    const int x_d1  = 36 + 84 + 12 + 84 / 2; /* centre of units-of-minutes digit */
+    ASSERT(px(g_buf, x_d1, y_mid) != px(g_buf2, x_d1, y_mid));
     PASS();
 }
 

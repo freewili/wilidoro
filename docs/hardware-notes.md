@@ -93,6 +93,8 @@ Not yet exercised (needs a longer session; none is a blocker):
 
 ## DVI output — region size and pixel clock
 
+*Never yet seen on a monitor — the checklist at the end of this section is the gate.*
+
 The RP2350 HSTX block drives 640×480p60 DVI on GPIO 12–19. Wilidoro shows a
 room-readable focus view there — state word, huge `MM:SS`, session dots — in the
 active theme's colors. The LCD is unaffected and remains the control surface.
@@ -108,8 +110,8 @@ refuses to sync.
 `target_compile_definitions(freewili2_bsp PUBLIC HSTX_VID_W_MAX=480 HSTX_VID_H_MAX=240)`
 in the root `CMakeLists.txt`. Those macros size `framebuf[]` at **compile** time —
 passing a smaller `vid_h` to `hstx_dvi_init()` does not shrink it. The BSP default
-480×320 is 320 KB, which with our other ~187 KB of BSS leaves ~5 KB for stack and
-heap and will not fit. (The `#ifndef` guards that make them overridable were added
+480×320 is 320 KB, which with our other ~187 KB of BSS leaves ~5 KB for heap
+and will not fit. (The `#ifndef` guards that make them overridable were added
 upstream in `wilibsp`.)
 
 **The framebuffer is strided**: rows are separated by HSTX scanout command words,
@@ -130,6 +132,8 @@ to prove nothing escapes.
    continuous memory-bus traffic alongside the audio TX DMA and the blocking
    ST7796 flush.
 6. The LCD refresh is not visibly degraded by that same contention.
+7. With DVI previously toggled off, press Settings → Default and confirm the
+   output returns (regression test for the Default-desyncs-`dvi_on` fix).
 
 ---
 

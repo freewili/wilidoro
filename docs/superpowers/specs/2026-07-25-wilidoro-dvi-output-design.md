@@ -155,8 +155,8 @@ is 62,360 dwords = **244 KB**.
 |---|---|
 | Current BSS (post-C2) | 187 KB |
 | DVI framebuffer | 244 KB |
-| **Total** | **431 KB of 520 KB** |
-| Headroom | ~89 KB |
+| **Total** | **431 KB of 512 KB** |
+| Headroom | ~81 KB |
 
 That covers C3 (IMU — negligible) and C4 (radio buffers). If C4 needs more,
 dropping LVGL's second draw buffer in `src/target/lvgl_port.c` reclaims a further
@@ -173,7 +173,7 @@ linked alongside the USB/FatFs + LCD-strip stack in one binary").
 Wrap both in `#ifndef` so an app can override them via a compile definition, then
 bump the pin — the same fix-upstream-and-bump workflow used for the two Plan C2
 audio fixes. At 320 rows the buffer is 320 KB, which with our 187 KB BSS would
-leave ~13 KB for stack and heap and will not fit.
+leave ~5 KB for stack and heap and will not fit.
 
 ## Behavior
 
@@ -236,7 +236,7 @@ visual layout through host tests and reflashes alone is impractical.
 | Monitor rejects the 0.7 %-low pixel clock | 252 MHz fallback, enabled by the runtime-fs fix |
 | DVI scanout DMA starves audio or LCD | Checklist items 5–6; scanout is zero-IRQ and does not touch `DMA_IRQ_0` |
 | Renderer writes past `w` and corrupts command words | Sentinel stride tests on every render test |
-| 89 KB headroom proves tight for C4 | Reclaim 38 KB from LVGL's second draw buffer |
+| 81 KB headroom proves tight for C4 | Reclaim 38 KB from LVGL's second draw buffer |
 
 ## Decisions log
 

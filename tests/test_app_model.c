@@ -10,6 +10,7 @@ TEST settings_defaults_are_classic_pomodoro(void) {
     ASSERT_EQ(4,  s.long_every);
     ASSERT_EQ(0,  s.theme);
     ASSERT(s.beacon_on);
+    ASSERT(s.dvi_on);
     PASS();
 }
 

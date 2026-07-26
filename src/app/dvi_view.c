@@ -162,7 +162,7 @@ bool dvi_view_dirty(dvi_dirty_t *d, uint8_t theme_idx, const timer_view_t *v) {
                  | ((uint32_t)(v->paused      ? 1u : 0u)  << 25)
                  | ((uint32_t)(v->alarm       ? 1u : 0u)  << 26)
                  | ((uint32_t)(v->break_phase ? 1u : 0u)  << 27)
-                 | ((uint32_t)(v->session_idx & 7u)       << 28);
+                 | ((uint32_t)((v->session_idx * 9u + v->session_n) & 15u) << 28);
     if (d->valid && d->sig == sig) return false;
     d->sig = sig; d->valid = true;
     return true;
