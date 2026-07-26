@@ -85,6 +85,31 @@ Behaviour:
 Frames that survive framing are still checked by `beacon_unpack`'s magic, version
 and CRC16, which is what rejects noise that happens to frame plausibly.
 
+## 2b. Building the outgoing message — `app_beacon_msg`
+
+Nothing in the codebase maps app state to a `beacon_msg_t` today; the type is only
+ever consumed, on the receive side. TX needs that mapping, and it is pure logic, so
+it goes in `src/app/app_model.c` beside `neighbor_upsert` — which already speaks
+both `beacon_msg_t` and (since Plan C3's gate predicates) `pm_state_t`:
+
+```c
+void app_beacon_msg(const app_settings_t *s, const pomodoro_t *p,
+                    uint32_t now_ms, beacon_msg_t *out);
+```
+
+- `name` ← `s->name` verbatim (already space-padded, not NUL-terminated, exactly
+  `BEACON_NAME_LEN`).
+- `state` ← `PM_FOCUS` → `BST_FOCUS`; `PM_BREAK_SHORT` / `PM_BREAK_LONG` →
+  `BST_BREAK`; **everything else, including `PM_PAUSED` and `PM_ALARM`, →
+  `BST_IDLE`.** A paused session is not focusing, and broadcasting otherwise would
+  make a neighbour's "focusing, 12 min left" freeze at a stale figure. This is a
+  deliberate choice, not an oversight.
+- `minutes_left` ← `pomodoro_remaining_ms(p, now_ms) / 60000`, clamped to 255.
+- `completed` ← `p->stats.completed`, clamped to 255.
+
+Both clamps matter: the wire fields are single bytes, and `completed` accumulates
+without bound across a long session.
+
 ## 3. HAL — the seam already exists
 
 `hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN])` and
@@ -225,6 +250,11 @@ on Nearby. Treated as a conditional step, not a dependency.
   a timer callback.
 
 ## 7. Testing
+
+**Host** — `app_beacon_msg` is covered in the existing `test_app_model` binary:
+each `pm_state_t` maps to the right `beacon_state_t` (with `PM_PAUSED` and
+`PM_ALARM` both landing on `BST_IDLE`), the name copies through unchanged, and both
+byte clamps hold when remaining minutes or completed counts exceed 255.
 
 **Host** — `tests/test_beacon_rx.c`, a new binary (suite **10 → 11**):
 
