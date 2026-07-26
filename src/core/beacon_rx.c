@@ -21,12 +21,10 @@ static bool try_decode(beacon_rx_t *r, uint8_t out[BEACON_WIRE_LEN]) {
 
 bool beacon_rx_push(beacon_rx_t *r, uint32_t dur_us, uint8_t out[BEACON_WIRE_LEN]) {
     if (dur_us >= BEACON_GAP_US) {
-        bool got = try_decode(r, out);
-        r->n = 0;
         /* Idle is carrier-off, i.e. low, so the run after a gap is high --
-           exactly the polarity beacon_ook_decode assumes. */
-        r->armed = true;
-        return got;
+           exactly the polarity beacon_ook_decode assumes. beacon_rx_flush
+           re-arms the same way, so this is just an explicit close. */
+        return beacon_rx_flush(r, out);
     }
     if (!r->armed) return false;          /* polarity unknown until the first gap */
     if (r->n >= BEACON_MAX_DURS) {        /* noise: drop it and resync on the next gap */
@@ -36,4 +34,11 @@ bool beacon_rx_push(beacon_rx_t *r, uint32_t dur_us, uint8_t out[BEACON_WIRE_LEN
     }
     r->durs[r->n++] = dur_us;
     return false;
+}
+
+bool beacon_rx_flush(beacon_rx_t *r, uint8_t out[BEACON_WIRE_LEN]) {
+    bool got = try_decode(r, out);
+    r->n = 0;
+    r->armed = true;
+    return got;
 }

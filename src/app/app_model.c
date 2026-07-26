@@ -5,7 +5,14 @@ static int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v
 
 void app_settings_defaults(app_settings_t *s) {
     s->focus_min = 25; s->short_min = 5; s->long_min = 15; s->long_every = 4;
-    s->volume = 70; s->focus_tick = false; s->beacon_on = true; s->theme = 0;
+    /* beacon_on defaults false: unlike tilt_pause (which only reads this
+       device's own IMU and discloses nothing), beacon_on broadcasts the
+       user's configured name and focus state in clear, unauthenticated, at
+       near-max PA power, every ~20 s, to anything listening on 433.92 MHz,
+       with no pairing or consent gesture -- and buys nothing in the
+       overwhelmingly common single-device case beyond a 136 ms hitch and an
+       RF emission. Opt-in is the safer default. */
+    s->volume = 70; s->focus_tick = false; s->beacon_on = false; s->theme = 0;
     s->dvi_on = true;
     s->tilt_pause = false;
     memcpy(s->name, "WILI    ", APP_NAME_LEN);

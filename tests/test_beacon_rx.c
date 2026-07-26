@@ -21,6 +21,28 @@ static bool push_all(beacon_rx_t *r, const uint32_t *durs, size_t n,
 /* A gap comfortably longer than the threshold, as a real idle period would be. */
 #define GAP (BEACON_GAP_US * 4u)
 
+/* Model gdo_capture.pio's actual emission rule (see
+   wilibsp/bsp/radio/gdo_capture.pio and src/hal/hal_target.c's F1 comments),
+   NOT the encoder's own output: a word is emitted only when a run ENDS, i.e.
+   at the next level transition, and the stream strictly alternates starting
+   from a low run (`pre_low`, the idle before the first rising edge).
+   ook_tx_send always finishes a burst with gpio_put(0) (carrier off). Whether
+   that produces a transition -- and therefore a final emitted word -- depends
+   on parity: durs[] alternates starting high, so the last run is high iff `n`
+   is odd. When `n` is even the last run is already low, gpio_put(0) is a
+   no-op transition-wise, and that trailing low run is NEVER captured: no gap,
+   no closing edge, nothing. This is the real hardware behaviour that the
+   framer must cope with by flushing, not by waiting for a run that never
+   comes. */
+static size_t capture_of_burst(const uint32_t *durs, size_t n, uint32_t pre_low,
+                                uint32_t *ring) {
+    size_t k = 0;
+    ring[k++] = pre_low;
+    size_t emitted = (n % 2 == 1) ? n : n - 1;   /* last run high iff n is odd */
+    for (size_t i = 0; i < emitted; i++) ring[k++] = durs[i];
+    return k;
+}
+
 TEST round_trip_through_the_framer(void) {
     uint8_t wire[BEACON_WIRE_LEN]; make_wire(wire, "ALEX    ", BST_FOCUS, 17, 2);
     uint32_t durs[BEACON_MAX_DURS]; bool lvl = false;
@@ -64,7 +86,7 @@ TEST merged_trailing_halfbit_still_decodes(void) {
     PASS();
 }
 
-TEST clean_tail_decodes_on_the_first_attempt(void) {
+TEST clean_tail_decodes(void) {
     /* The mirror case: a final data bit of 0 is {low,high}, so the frame ends
        high, the gap terminates it, and the capture is already complete. */
     uint8_t wire[BEACON_WIRE_LEN];
@@ -150,6 +172,69 @@ TEST garbage_between_frames_does_not_block_the_second(void) {
     PASS();
 }
 
+/* Find a `completed` byte whose encoded run count has the requested parity
+   (odd != 0 for odd, 0 for even); capture_of_burst's dropped-final-run
+   behaviour differs between the two, so the pinning test below covers both. */
+static int find_wire_with_parity(int want_odd) {
+    for (int c = 0; c < 256; c++) {
+        uint8_t wire[BEACON_WIRE_LEN]; make_wire(wire, "ALEX    ", BST_FOCUS, 17, (uint8_t)c);
+        uint32_t durs[BEACON_MAX_DURS]; bool lvl = false;
+        size_t n = beacon_ook_encode(wire, durs, BEACON_MAX_DURS, &lvl);
+        if (((int)(n % 2)) == (want_odd ? 1 : 0)) return c;
+    }
+    return -1;
+}
+
+/* This is the test that pins F1: beacon_rx_push alone must NEVER decode a
+   hardware-shaped capture (no synthetic closing gap ever appears in it), and
+   beacon_rx_flush must decode that exact same stream. No ASSERT* here -- this
+   helper is not a TEST, so it hands results back for the callers to assert. */
+static void modelled_capture_case(uint8_t completed, bool *no_flush_decodes,
+                                   bool *flush_decodes, bool *flush_correct) {
+    uint8_t wire[BEACON_WIRE_LEN]; make_wire(wire, "ALEX    ", BST_FOCUS, 17, completed);
+    uint32_t durs[BEACON_MAX_DURS]; bool lvl = false;
+    size_t n = beacon_ook_encode(wire, durs, BEACON_MAX_DURS, &lvl);
+
+    uint32_t ring[BEACON_MAX_DURS + 8];
+    size_t rn = capture_of_burst(durs, n, 500000u, ring);
+
+    /* Without a flush: exactly what the hardware would produce, and nothing
+       ever decodes -- there is no closing gap in this stream at all. */
+    beacon_rx_t r1; beacon_rx_init(&r1);
+    uint8_t got1[BEACON_WIRE_LEN];
+    *no_flush_decodes = push_all(&r1, ring, rn, got1);
+
+    /* With a flush standing in for hal_beacon_rx's "the poll drained zero
+       edges" close: the same modelled stream decodes correctly. */
+    beacon_rx_t r2; beacon_rx_init(&r2);
+    uint8_t got2[BEACON_WIRE_LEN];
+    push_all(&r2, ring, rn, got2);
+    *flush_decodes = beacon_rx_flush(&r2, got2);
+    *flush_correct = *flush_decodes && memcmp(wire, got2, BEACON_WIRE_LEN) == 0;
+}
+
+TEST modelled_capture_decodes_only_with_a_flush_odd_run_count(void) {
+    int done = find_wire_with_parity(1);
+    ASSERT(done >= 0);
+    bool no_flush = true, flush = false, correct = false;
+    modelled_capture_case((uint8_t)done, &no_flush, &flush, &correct);
+    ASSERT_FALSE(no_flush);
+    ASSERT(flush);
+    ASSERT(correct);
+    PASS();
+}
+
+TEST modelled_capture_decodes_only_with_a_flush_even_run_count(void) {
+    int done = find_wire_with_parity(0);
+    ASSERT(done >= 0);
+    bool no_flush = true, flush = false, correct = false;
+    modelled_capture_case((uint8_t)done, &no_flush, &flush, &correct);
+    ASSERT_FALSE(no_flush);
+    ASSERT(flush);
+    ASSERT(correct);
+    PASS();
+}
+
 TEST overflow_discards_and_recovers(void) {
     beacon_rx_t r; beacon_rx_init(&r);
     uint8_t got[BEACON_WIRE_LEN];
@@ -174,10 +259,12 @@ int main(int argc, char **argv) {
     GREATEST_MAIN_BEGIN();
     RUN_TEST(round_trip_through_the_framer);
     RUN_TEST(merged_trailing_halfbit_still_decodes);
-    RUN_TEST(clean_tail_decodes_on_the_first_attempt);
+    RUN_TEST(clean_tail_decodes);
     RUN_TEST(durations_before_the_first_gap_are_discarded);
     RUN_TEST(two_frames_back_to_back_both_decode);
     RUN_TEST(garbage_between_frames_does_not_block_the_second);
+    RUN_TEST(modelled_capture_decodes_only_with_a_flush_odd_run_count);
+    RUN_TEST(modelled_capture_decodes_only_with_a_flush_even_run_count);
     RUN_TEST(overflow_discards_and_recovers);
     GREATEST_MAIN_END();
 }

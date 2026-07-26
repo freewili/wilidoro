@@ -9,7 +9,7 @@ TEST settings_defaults_are_classic_pomodoro(void) {
     ASSERT_EQ(15, s.long_min);
     ASSERT_EQ(4,  s.long_every);
     ASSERT_EQ(0,  s.theme);
-    ASSERT(s.beacon_on);
+    ASSERT_FALSE(s.beacon_on);    /* opt-in: broadcasting your name/state must not surprise you */
     ASSERT(s.dvi_on);
     ASSERT_FALSE(s.tilt_pause);   /* opt-in: setting the board down must not surprise you */
     PASS();

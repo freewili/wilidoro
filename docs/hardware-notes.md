@@ -249,9 +249,10 @@ returns to it.
 
 | tunable | value | where | meaning |
 |---|---|---|---|
-| `BEACON_TX_MS` | 20 000 | `src/app/app.c` | transmit period; `NEIGHBOR_TTL_MS` is 60 s, so a listener gets three chances |
+| `BEACON_TX_MS` | 20 000 | `src/app/app.c` | base transmit period |
+| `BEACON_TX_JITTER_MS` | 3 000 | `src/app/app.c` | spreads the period to 18.5–21.5 s so two co-located units cannot lock into permanent mutual collision; `NEIGHBOR_TTL_MS` is 60 s, so a listener gets three chances at that jittered period |
 | `BEACON_HALFBIT_US` | 500 | `src/core/beacon.h` | OOK half-bit, so a frame is ~136 ms |
-| `BEACON_GAP_US` | 2 500 | `src/core/beacon_rx.h` | inter-frame gap threshold; `beacon_ook_decode` rejects runs over 4 half-bits |
+| `BEACON_GAP_US` | 2 250 | `src/core/beacon_rx.h` | inter-frame gap threshold; `beacon_ook_decode` rejects runs whose rounded half-bit count exceeds 4, i.e. at 2 250 µs, so the threshold sits right at that boundary rather than past it |
 
 **A transmit blocks core 0 for ~136 ms** (136 bits × 2 half-bits × 500 µs) and is
 therefore gated on `!sound_active()` — a stall during a chime would stretch the
@@ -282,6 +283,21 @@ LVGL flush path is deliberately unchanged.
    LEDs break once the radio is live, this is the first suspect** — bisect by
    skipping `gdo_capture_init()`/`gdo_capture_start()` in `hal_init`.
 
+### Two things inherent to the design (not defects)
+
+1. **Self-reception is expected on this hardware.** PIO2 samples the GDO0 pad
+   regardless of who is driving it — the same property the loopback self-test
+   below relies on — so every frame this device transmits also lands in its
+   own capture ring. This is why `hal_beacon_tx` drains the capture ring dry
+   and re-initialises the framer after every transmit: without that, the
+   device would decode its own beacon and list itself on its own Nearby
+   screen.
+2. **The beacon is unauthenticated and trivially spoofable.** There is no
+   pairing, signing, or origin check — anything transmitting valid OOK
+   Manchester on 433.92 MHz in this wire format can claim any name and any
+   focus state. Treat the Nearby screen as informational among trusted
+   nearby devices, not as any kind of identity guarantee.
+
 ### On-device beacon checklist
 
 None of this has been run. **Ask before flashing.**
@@ -289,9 +305,13 @@ None of this has been run. **Ask before flashing.**
 1. RTT at boot reports `cc1101: PARTNUM=0x00 VERSION=0x14` and `radio: cc1101 ok`.
    A `VERSION` of `0x00` or `0xFF` means nothing answered on SPI1 and the beacon
    stays disabled.
-2. RTT reports `beacon: loopback ok`. A `FAILED` here means the chain broke
-   somewhere between `beacon_pack` and `beacon_unpack` — and because the
-   self-test cannot false-pass, it is worth trusting.
+2. RTT reports `beacon: loopback ok`. Because the self-test cannot false-pass,
+   a pass is strong evidence the whole chain (pack → encode → TX timing → PIO2
+   capture → framer → decode → unpack) works. A `FAILED` does **not** by
+   itself point at `beacon_pack`/`beacon_unpack` — first rule out the
+   capture-ring/flush behaviour (debris left in the ring from a previous run,
+   or the flush that closes the segment not firing) before suspecting the
+   codec.
 3. **Audio still works with the radio live** — play a start chime and confirm it
    is clean. This is the three-PIO check and the most likely regression.
 4. **The LEDs still animate** with the radio live (PIO1 alongside PIO2).

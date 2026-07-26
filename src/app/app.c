@@ -34,8 +34,15 @@ static dvi_dirty_t s_dvi_dirty;
 #define FOCUS_TICK_MS   60000u
 
 /* Neighbour entries expire after NEIGHBOR_TTL_MS (60 s), so transmitting every
-   20 s gives a listener three chances before it drops us. */
+   ~20 s gives a listener three chances before it drops us. */
 #define BEACON_TX_MS 20000u
+
+/* Spread transmits so two co-located units do not lock into permanent collision:
+   with a fixed 20 s period their 136 ms bursts can overlap for ~an hour before
+   crystal drift separates them. `now` differs per device, so its low bits are a
+   good enough jitter source; this needs decorrelation, not cryptographic
+   randomness. */
+#define BEACON_TX_JITTER_MS 3000u
 
 void app_sound(sound_id_t id) {
     sound_play(&s_app.sound, s_app.settings.theme, id, s_app.settings.volume, hal_now_ms());
@@ -191,7 +198,8 @@ static void tick_cb(lv_timer_t *t) {
             uint8_t tx[BEACON_WIRE_LEN];
             beacon_pack(&out, tx);
             hal_beacon_tx(tx);
-            s_next_beacon_ms = now + BEACON_TX_MS;
+            s_next_beacon_ms = now + BEACON_TX_MS - (BEACON_TX_JITTER_MS / 2u)
+                             + (now % BEACON_TX_JITTER_MS);
         }
         /* Sound playing: leave the deadline expired and retry on the next tick. */
     }
