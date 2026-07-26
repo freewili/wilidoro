@@ -24,7 +24,7 @@ add_executable(wilidoro_sim
     main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/pomodoro.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/beacon.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../core/gestures.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core/tilt.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/dimming.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../hal/hal_sim.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/app_model.c

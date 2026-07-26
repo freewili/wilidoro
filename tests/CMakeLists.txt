@@ -16,7 +16,7 @@ endfunction()
 add_core_test(test_smoke)
 add_core_test(test_pomodoro ${CORE}/pomodoro.c)
 add_core_test(test_beacon ${CORE}/beacon.c)
-add_core_test(test_gestures ${CORE}/gestures.c)
+add_core_test(test_tilt ${CORE}/tilt.c)
 add_core_test(test_dimming ${CORE}/dimming.c)
 
 add_executable(test_app_model test_app_model.c ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/app_model.c)

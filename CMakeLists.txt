@@ -28,7 +28,7 @@ add_executable(wilidoro
     src/target/bl_pwm.c
     src/core/pomodoro.c
     src/core/beacon.c
-    src/core/gestures.c
+    src/core/tilt.c
     src/core/dimming.c
     src/hal/hal_target.c
     src/app/app_model.c
