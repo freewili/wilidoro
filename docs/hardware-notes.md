@@ -113,13 +113,19 @@ similar.
 ring ~85 % complete, and 21:13 elapsed of a 25:00 focus is 85 %. The permille math
 checks out against the clock.
 
-**One thing to check by eye rather than by camera.** The Flip Clock face reads *cool*
-(slate blue-grey cards) in the captures, while the design calls it "Warm Flip Clock"
-with a warm palette. **This is probably a camera artefact, not a bug** — the WS2812s
-wash the whole scene magenta and the C960's white balance is visibly skewed by it, so
-every capture in this file's theme set is colour-unreliable. Confirm the warm palette
-by eye before changing `theme_flip.c`; do not "fix" a palette on the strength of a
-photo taken under magenta LEDs.
+**On the Flip Clock palette — resolved, and worth recording so nobody "fixes" it.**
+The first captures made the Flip Clock face look *cool*, which seemed to contradict the
+design's "Warm Flip Clock". Cropping the frame to just the panel — cutting out the
+magenta WS2812 wash that was skewing the camera's white balance — shows the warm coral
+accent clearly. Reading the constants confirms the intent: `FL_ACCENT = 0xC8503C` is a
+distinctly warm coral/rust, and `FL_BG1 = 0x221f1d` is a warm-biased near-black. The
+card fill simply *is* nearly black, so a 5-unit warm bias in it is imperceptible either
+by eye or on camera; the warmth in this theme lives in the accent, not the background.
+Nothing to change in `theme_flip.c`.
+
+The general lesson: **an uncropped board photo is not usable evidence about on-screen
+colour.** The LEDs sit centimetres from the panel and dominate the frame's white
+balance. Crop to the panel before judging any palette.
 
 ## DVI output — region size and pixel clock
 
