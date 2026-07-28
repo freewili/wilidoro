@@ -30,7 +30,8 @@ int main(void) {
     st7789_init_begin();
     const absolute_time_t lcd_deadline = make_timeout_time_ms(500);
     while (!st7789_ready() && !time_reached(lcd_deadline)) st7789_init_step();
-    if (!st7789_ready()) {
+    const bool panel_ok = st7789_ready();
+    if (!panel_ok) {
         DIAG("[wilidoro] st7789 init FAILED\n");
     } else {
         st7789_clear(0x0000u);           /* wipe the bootloader's leftover UI */
@@ -42,9 +43,20 @@ int main(void) {
     lv_timer_handler();       /* first frame */
     DIAG("wilidoro OG up: sys=%u kHz\n", (unsigned)(clock_get_hz(clk_sys) / 1000u));
 
+    /* 1 Hz heartbeat carrying the panel status. A boot-time-only DIAG lands in
+       the window before USB CDC enumerates and pico_stdio_usb drops it -- this
+       is how Task 4 first noticed a bounded init timeout would otherwise be a
+       black panel with a silent console. Repeating it at 1 Hz makes that
+       failure observable whenever the console happens to attach. */
+    absolute_time_t next_beat = make_timeout_time_ms(1000);
+
     for (;;) {
         hal_pump();            /* the one fwog_power_poll() per iteration */
         lv_timer_handler();
+        if (time_reached(next_beat)) {
+            next_beat = make_timeout_time_ms(1000);
+            DIAG("[wilidoro] alive (panel=%s)\n", panel_ok ? "ok" : "FAILED");
+        }
         sleep_ms(2);
     }
 }

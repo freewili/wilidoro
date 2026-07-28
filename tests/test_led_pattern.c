@@ -62,8 +62,8 @@ TEST paused_is_dimmer_than_running(void) {
 
 TEST og_seven_fills_proportional(void) {
     led_rgb_t o[LED_COUNT_MAX];
-    /* 4/7 elapsed -> 4 lit. 571/1000 * 7 = 3.99 -> use an exact quarter instead:
-       25% of 7 = 1.75 -> 1 lit; 50% -> 3 lit (3.5 truncates). */
+    /* 50% elapsed: total=1000ms, rem=500ms -> elapsed*7/1000 = 3.5, truncates
+       to 3 of 7 lit. */
     timer_view_t v = V(false,false,false,false, 1000, 500);
     led_pattern_render(0, &v, o, 7);
     ASSERT_EQ(3, lit_count(o, 7));

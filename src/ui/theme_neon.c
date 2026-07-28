@@ -11,9 +11,17 @@
 
 static lv_obj_t *s_arc, *s_time, *s_state;
 
+/* Diameter derived from UI_FACE_H (src/ui/ui.h) rather than a literal, so it
+ * fits both boards: on the FW2 (UI_FACE_H=286) this evaluates to exactly the
+ * original literal, 220, so FW2 rendering is unchanged. On the OG
+ * (UI_FACE_H=212) it evaluates to 146, which centered with the same -6 y
+ * offset keeps the ring's top edge at y=27 -- comfortably inside the face,
+ * where the old fixed 220px arc clipped ~10px off the top. */
+#define NEON_ARC_DIAM (UI_FACE_H - 66)
+
 static void neon_build(lv_obj_t *face) {
     s_arc = lv_arc_create(face);
-    lv_obj_set_size(s_arc, 220, 220);
+    lv_obj_set_size(s_arc, NEON_ARC_DIAM, NEON_ARC_DIAM);
     lv_obj_align(s_arc, LV_ALIGN_CENTER, 0, -6);
     lv_arc_set_rotation(s_arc, 270);
     lv_arc_set_bg_angles(s_arc, 0, 360);

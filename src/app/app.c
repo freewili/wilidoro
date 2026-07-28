@@ -229,11 +229,20 @@ static void tick_cb(lv_timer_t *t) {
         }
     }
 #endif
-    led_rgb_t leds[LED_COUNT_MAX];
-    const int nled = hal_led_count();
-    led_pattern_render(s_app.settings.theme, &lv, leds, nled);
-    for (int i = 0; i < nled; i++) hal_led_set(i, leds[i].r, leds[i].g, leds[i].b);
-    hal_led_show();
+    /* hal_power_armed(): while a hardware power-off countdown is running, the
+       BSP paints that countdown on the LED bar itself, so the app must not
+       write LEDs over it (see hal.h). Always false on FW2 and the sim. On the
+       OG this guard is currently unobservable -- nothing calls ws2812_init()
+       yet in hal_og.c, so the LED bar is dark either way; Plan OG-B wires the
+       LEDs up and is what makes this guard start mattering. Do not call
+       ws2812_init() here -- that is Plan OG-B's scope, not this fix's. */
+    if (!hal_power_armed()) {
+        led_rgb_t leds[LED_COUNT_MAX];
+        const int nled = hal_led_count();
+        led_pattern_render(s_app.settings.theme, &lv, leds, nled);
+        for (int i = 0; i < nled; i++) hal_led_set(i, leds[i].r, leds[i].g, leds[i].b);
+        hal_led_show();
+    }
 
     /* refresh the active screen */
     switch (s_app.screen) {

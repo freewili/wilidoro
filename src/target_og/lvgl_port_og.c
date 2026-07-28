@@ -9,8 +9,10 @@
 #include "hal.h"
 #include "ui.h"
 
-_Static_assert(DISP_HOR == UI_W && DISP_VER == UI_H,
-               "LVGL panel geometry and the UI layout geometry disagree");
+_Static_assert(DISP_HOR == UI_W && DISP_VER == UI_H &&
+               DISP_HOR == ST7789_W && DISP_VER == ST7789_H,
+               "LVGL panel geometry, the UI layout geometry and the ST7789 "
+               "driver's own geometry disagree");
 
 #define BUF_LINES 40
 #define BUF_PX    (DISP_HOR * BUF_LINES)
@@ -26,10 +28,13 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px) {
     const uint16_t w = (uint16_t)(area->x2 - area->x1 + 1);
     const uint16_t h = (uint16_t)(area->y2 - area->y1 + 1);
 
-    st7789_dma_wait();                 /* previous blit must be retired */
+    /* No explicit st7789_dma_wait() here: st7789_set_window() and
+       st7789_blit() each call it internally already, and st7789_blit() is a
+       synchronous chunked spi_write_blocking() (see wiliOGbsp's
+       bsp/display_cpu/lcd/st7789.c), not a DMA-backed blit -- it has already
+       fully drained the SPI bus by the time it returns. */
     st7789_set_window(x, y, w, h);
     st7789_blit((const uint16_t *)px, (size_t)w * (size_t)h);
-    st7789_dma_wait();
 
     lv_display_flush_ready(disp);
 }

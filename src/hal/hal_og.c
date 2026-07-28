@@ -7,7 +7,6 @@
 #include "hal.h"
 #include "fwog_display.h"
 #include "pico/stdlib.h"
-#include <string.h>
 
 #define BTN_QUEUE_LEN 8
 static hal_btn_t s_queue[BTN_QUEUE_LEN];
@@ -67,8 +66,16 @@ void hal_led_show(void) { }
 void hal_tone(uint16_t hz, uint16_t ms, uint8_t amp) { (void)hz;(void)ms;(void)amp; }
 void hal_audio_idle(void) { }
 
-/* ---- Backlight: no light sensor on this board, so this is a fixed level ---- */
-void hal_backlight(uint8_t pct) { board_backlight(pct); }
+/* ---- Backlight: no light sensor on this board, so this is a fixed level ----
+ * hal.h's hal_backlight() takes a 0..100 percent, but board_backlight() takes
+ * a 0-255 PWM duty directly (wiliOGbsp/bsp/display_cpu/platform/board.h: "0-255,
+ * as PWM duty"; FWOG_BACKLIGHT_WRAP is 255 in board.c). Passing the percent
+ * straight through under-drives the backlight to ~39% of full brightness --
+ * scale it. */
+void hal_backlight(uint8_t pct) {
+    if (pct > 100u) pct = 100u;
+    board_backlight((uint8_t)((unsigned)pct * 255u / 100u));
+}
 
 /* ---- Absent hardware ---- */
 bool hal_dvi_surface(hal_dvi_surface_t *s) { (void)s; return false; }   /* no HSTX on RP2040 */
@@ -83,13 +90,11 @@ void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }
 
 hal_caps_t hal_caps(void) {
-    hal_caps_t c = {0};
+    hal_caps_t c = {0};   /* light, dvi stay false: no hardware on this board */
     c.buttons = true;
     c.leds    = false;   /* Plan OG-B */
     c.audio   = false;   /* Plan OG-B */
     c.imu     = false;   /* Plan OG-B */
     c.radio   = false;   /* Plan OG-D */
-    c.light   = false;   /* no hardware: backlight is fixed */
-    c.dvi     = false;   /* no hardware: RP2040 has no HSTX */
     return c;
 }
