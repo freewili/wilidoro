@@ -500,6 +500,12 @@ target_link_libraries(wilidoro_main PRIVATE
     pico_stdlib hardware_clocks hardware_gpio hardware_spi hardware_pio
     fwog_main_bsp
 )
+# Generate and link the embedded display blob. fwog_main_app() does NOT do this,
+# and fwog_display_update_run() references three symbols only the generated blob
+# defines -- without this call the main app fails to link. Must sit between
+# target_link_libraries() and fwog_main_app(); see the BSP's own
+# apps/template_main/CMakeLists.txt for the reference ordering.
+fwog_embed_display_image(wilidoro_main)
 fwog_main_app(wilidoro_main
     VERSION 001
     DESCRIPTION "Pomodoro timer, main CPU: carries the display image and (from Plan OG-D) the sub-GHz beacon")
@@ -679,8 +685,16 @@ Write-Host "flashed $app to $($vols[0].DriveLetter): -- the board reboots and pu
 The serial bootloader is a once-per-board step and is a prerequisite for
 anything in this plan reaching the display CPU. From the submodule:
 
-Run: `python wiliOGbsp/tools/fw.py console --cpu display`
+Run: `python wiliOGbsp/tools/fw.py console --product "FWOG display"`
 Expected: the display CPU enumerates and identifies as `FWOG display ...`.
+
+`fw.py console` takes `--port`/`--product`, **not** `--cpu` — `--cpu` belongs
+to `bootsel`. `do_console()` also reads stdin to EOF, so under a
+non-interactive shell it exits immediately; that is expected, and enumeration
+is what is being checked. A stronger signal is available without the console:
+the main CPU's heartbeat reports `HB display=...`, the cached boot-time result
+of `fwog_display_update_run()`. `display=app updated` proves the link came up,
+the display bootloader handshook, accepted a full image and jumped to the app.
 
 If it does not enumerate at all, flash the bootloader once — this is the one
 display-CPU UF2 flash that is correct:
@@ -701,9 +715,9 @@ Expected: `build/wilidoro.uf2`, unchanged behaviour.
 - [ ] **Step 13: Flash and confirm both CPUs are alive**
 
 Run: `powershell -File tools/flash_og.ps1`
-Then: `python wiliOGbsp/tools/fw.py console --cpu display`
+Then: `python wiliOGbsp/tools/fw.py console --product "FWOG display"`
 Expected: `[wilidoro] display alive` once a second. The main CPU's console
-shows `[wilidoro] main alive`.
+(`--product "FWOG main"`) shows `[wilidoro] main alive`.
 
 Also confirm the guard fires:
 Run: `powershell -File tools/flash_og.ps1 wilidoro_display`
