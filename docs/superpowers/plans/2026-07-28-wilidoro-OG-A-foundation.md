@@ -18,6 +18,15 @@ Every task's requirements implicitly include this section. Values copied verbati
 - **Clock:** the BSP runs at 200 MHz (vreg 1.15 V, flash `CLKDIV` 4). Never hardcode a PIO divider or a baud rate — derive from `clock_get_hz()`.
 - **UART0 on both CPUs is the inter-CPU link and must never carry stdio.** Every app calls `fwog_configure_stdio(<target>)` (done for you by `fwog_display_app()` / `fwog_main_app()`). **Never `printf`** — use `DIAG()`.
 - **Never add a watchdog to the display CPU.**
+- **The main CPU's watchdog is armed by `board_init()` and every main-CPU app
+  MUST call `board_watchdog_kick()` every loop iteration** (2 s window,
+  `FWOG_WATCHDOG_MS`). It is the only way to recover a hung main CPU on this
+  board, so the BSP makes kicking it the app's job. Omitting it neither fails
+  to build nor fails to run — main simply resets every 2 s forever, taking the
+  display with it via `board_init()`'s `GUI_NRESET`. This was measured on the
+  first hardware bring-up, not theorised. `apps/template_main/main.c` is the
+  reference; `template_display` is **not**, and copying it is how this was
+  missed.
 - **Every display app must declare a power policy or it does not link.** We use `FWOG_POWER_DEFAULT()`, then call `fwog_power_poll(now_ms)` exactly once per main-loop iteration and take buttons from its **return value** — a second `fwog_buttons_poll()` in the same iteration consumes edges out from under the ship-mode machine.
 - **`fwog_power_poll()` renders the shutdown countdown on the WS2812 bar itself** when a hold is armed, restoring previous colours if aborted. App LED writes must not fight it — see Task 3.
 - **`PIN_LCD_DC` is 12 and `PIN_LCD_CS` is 13**, despite the legacy names suggesting otherwise.
@@ -562,14 +571,30 @@ int main(void) {
     board_init();
 
     /* Push the embedded display image if the display CPU's copy differs
-       (compared by image CRC32, so an unchanged image is skipped). */
-    fwog_display_update_run();
+       (compared by image CRC32, so an unchanged image is skipped). This also
+       performs board_release_display() itself, so we must not call it. */
+    const fwog_display_result_t disp = fwog_display_update_run();
+
+    /* Announce the result for the first 10 s rather than once: the handshake
+       finishes before USB CDC has enumerated and the host has asserted DTR,
+       and pico_stdio_usb DROPS anything written before then. */
+    const absolute_time_t announce_until = make_timeout_time_ms(10000);
 
     absolute_time_t next_beat = make_timeout_time_ms(1000);
     while (true) {
+        /* REQUIRED -- see Global Constraints. board_init() arms a 2 s watchdog
+           and kicking it is the app's job. Omitting this builds and links
+           fine, then resets the board every 2 s forever. */
+        board_watchdog_kick();
+
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
-            DIAG("[wilidoro] main alive\n");
+            if (!time_reached(announce_until)) {
+                DIAG("[wilidoro] main alive, display: %s\n",
+                     fwog_display_result_text(disp));
+            } else {
+                DIAG("[wilidoro] main alive\n");
+            }
         }
         sleep_ms(2);
     }
