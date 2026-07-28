@@ -45,6 +45,11 @@ int main(void) {
     const bool leds_ok = ws2812_init(pio0, 0);
     if (!leds_ok) DIAG("[wilidoro] ws2812 init FAILED\n");
 
+    /* pio0 sm2 -- the BSP's documented allocation, sharing the block with
+       WS2812 on sm0. */
+    const bool audio_ok = i2s_audio_init(pio0, 2);
+    if (!audio_ok) DIAG("[wilidoro] i2s init FAILED\n");
+
     lvgl_port_og_init();
     app_init();               /* builds screens, starts the tick timer */
     lv_timer_handler();       /* first frame */
@@ -62,8 +67,9 @@ int main(void) {
         lv_timer_handler();
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
-            DIAG("[wilidoro] alive (panel=%s leds=%s)\n",
-                 panel_ok ? "ok" : "FAILED", leds_ok ? "ok" : "FAILED");
+            DIAG("[wilidoro] alive (panel=%s leds=%s audio=%s)\n",
+                 panel_ok ? "ok" : "FAILED", leds_ok ? "ok" : "FAILED",
+                 audio_ok ? "ok" : "FAILED");
         }
         sleep_ms(2);
     }

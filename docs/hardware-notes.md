@@ -599,6 +599,45 @@ need to differ from the FW2's, `hal_led_brightness()` in `src/hal/hal_og.c` is t
 correct place to apply an OG-specific scale without touching the shared app-level
 constant.
 
+## FreeWili OG — chimes over I2S (not yet ear-confirmed)
+
+Plan OG-B (Task 3) wires `tone_render()` (Task 2) into the OG's I2S block:
+`hal_tone()` in `src/hal/hal_og.c` renders one note into a `static` 3200-sample
+buffer and hands it to `i2s_audio_start()`, `hal_audio_idle()` calls
+`i2s_audio_stop()`, and `hal_pump()` now calls `i2s_audio_process()` once per
+main-loop iteration so the A/B buffer chain doesn't starve mid-note.
+`i2s_audio_init(pio0, 2)` runs in `src/target_og/main.c` next to Task 1's
+`ws2812_init(pio0, 0)`, and the heartbeat now reads
+`alive (panel=%s leds=%s audio=%s)`.
+
+The value actually in effect today is **`TONE_PEAK_MAX = 12000`** in
+`src/app/tone_synth.h`, unchanged from what Task 2 landed. **Nobody has
+listened to this board's chimes yet** — the level and tone quality below are
+unverified, not confirmed. This entry records the starting point, not a
+judged choice.
+
+Two things are known from the render path itself rather than from listening:
+the OG's I2S output is fixed at 8 kHz (`TONE_RATE_HZ`), and `sound.c`'s shared
+note tables are clamped to a 2.5 kHz ceiling (`TONE_HZ_CEILING`) before
+rendering, in `tone_synth.c` rather than in `sound.c`, since `sound.c` is
+shared with the FreeWili 2. Some dulling relative to the FreeWili 2's codec
+path is expected from the lower sample rate and ceiling alone; that is not
+the same claim as "sounds fine" or "sounds harsh," which nobody has checked.
+No note in the shared tables has been retuned for this board.
+
+**What a human still needs to do, with the board on COM24/COM59 and this
+firmware flashed:** press grey to start a session (neon theme, `SND_START`)
+and confirm the start chime is audible at a sensible level, not silent and
+not distorted; then let a session end or press yellow (Skip) to reach a phase
+change and do the same for the end chime; and judge whether either chime is
+harsh or buzzy — an aliasing whine, not just "duller than the FreeWili 2,"
+would indicate a real problem. If the level is wrong, `TONE_PEAK_MAX` in
+`src/app/tone_synth.h` is the place to adjust it (its host test asserts the
+rendered peak against that constant, so the test moves with it). If the tone
+quality itself is wrong, the fix lives in `sound.c`'s shared note tables —
+but since those are shared with the FreeWili 2, treat any change there as its
+own decision, not a quick tweak, and record the outcome here once judged.
+
 ---
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule

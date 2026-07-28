@@ -7,6 +7,7 @@
 #include "hal.h"
 #include "fwog_display.h"
 #include "pico/stdlib.h"
+#include "tone_synth.h"
 
 #define BTN_QUEUE_LEN 8
 static hal_btn_t s_queue[BTN_QUEUE_LEN];
@@ -40,6 +41,8 @@ void hal_pump(void) {
     for (unsigned i = 0; i < FWOG_BTN_COUNT; i++) {
         if (p.buttons.pressed & (1u << i)) queue_push((hal_btn_t)i);
     }
+
+    i2s_audio_process();   /* feeds the A/B chain; starves and truncates without it */
 }
 
 uint32_t hal_now_ms(void) { return to_ms_since_boot(get_absolute_time()); }
@@ -84,8 +87,23 @@ void hal_led_show(void) {
 }
 
 /* ---- Audio: Plan OG-B ---- */
-void hal_tone(uint16_t hz, uint16_t ms, uint8_t amp) { (void)hz;(void)ms;(void)amp; }
-void hal_audio_idle(void) { }
+/* One note at a time. i2s_audio_start() takes a caller-owned buffer and reads
+   from it while the note plays, so this must stay alive until the note ends --
+   hence static, not a stack array. 3200 int16 is 6.4 KB. */
+static int16_t s_tone_buf[TONE_MAX_SAMPLES];
+
+void hal_tone(uint16_t hz, uint16_t ms, uint8_t amp) {
+    if (ms == 0u) return;
+    i2s_audio_stop();                       /* always stop before re-arming */
+    const size_t n = tone_render(hz, ms, amp, s_tone_buf, TONE_MAX_SAMPLES);
+    if (n == 0u) return;
+    /* force_mono=true, is_8bit=false: our samples are 16-bit mono. */
+    (void)i2s_audio_start(s_tone_buf, (unsigned)n, true, false);
+}
+
+void hal_audio_idle(void) {
+    i2s_audio_stop();
+}
 
 /* ---- Backlight: no light sensor on this board, so this is a fixed level ----
  * hal.h's hal_backlight() takes a 0..100 percent, but board_backlight() takes
@@ -114,7 +132,7 @@ hal_caps_t hal_caps(void) {
     hal_caps_t c = {0};   /* light, dvi stay false: no hardware on this board */
     c.buttons = true;
     c.leds    = true;
-    c.audio   = false;   /* Plan OG-B */
+    c.audio   = true;
     c.imu     = false;   /* Plan OG-B */
     c.radio   = false;   /* Plan OG-D */
     return c;
