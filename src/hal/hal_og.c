@@ -57,10 +57,31 @@ bool hal_next_button(hal_btn_t *out) {
 bool hal_power_armed(void) { return s_power_armed; }
 
 /* ---- LEDs: Plan OG-B ---- */
-int  hal_led_count(void) { return FWOG_LED_COUNT; }   /* 7 */
-void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b) { (void)i;(void)r;(void)g;(void)b; }
-void hal_led_brightness(uint8_t level) { (void)level; }
-void hal_led_show(void) { }
+/* The OG's WS2812 driver has no brightness control -- the FreeWili 2's
+   ws2812_set_brightness() has no counterpart here -- so scale in software on
+   the way in and keep the chain's own values at what we want lit. */
+static uint8_t s_led_bright = 255;
+static uint8_t s_led_rgb[FWOG_LED_COUNT][3];
+
+int hal_led_count(void) { return FWOG_LED_COUNT; }
+
+void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b) {
+    if (i < 0 || i >= FWOG_LED_COUNT) return;
+    s_led_rgb[i][0] = r; s_led_rgb[i][1] = g; s_led_rgb[i][2] = b;
+}
+
+void hal_led_brightness(uint8_t level) { s_led_bright = level; }
+
+void hal_led_show(void) {
+    if (!ws2812_ready()) return;
+    for (unsigned i = 0; i < FWOG_LED_COUNT; i++) {
+        ws2812_set_color(i,
+            (uint8_t)(((unsigned)s_led_rgb[i][0] * s_led_bright) / 255u),
+            (uint8_t)(((unsigned)s_led_rgb[i][1] * s_led_bright) / 255u),
+            (uint8_t)(((unsigned)s_led_rgb[i][2] * s_led_bright) / 255u));
+    }
+    ws2812_process();   /* blocking, DMA-free: once per show, never in a spin */
+}
 
 /* ---- Audio: Plan OG-B ---- */
 void hal_tone(uint16_t hz, uint16_t ms, uint8_t amp) { (void)hz;(void)ms;(void)amp; }
@@ -92,7 +113,7 @@ bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }
 hal_caps_t hal_caps(void) {
     hal_caps_t c = {0};   /* light, dvi stay false: no hardware on this board */
     c.buttons = true;
-    c.leds    = false;   /* Plan OG-B */
+    c.leds    = true;
     c.audio   = false;   /* Plan OG-B */
     c.imu     = false;   /* Plan OG-B */
     c.radio   = false;   /* Plan OG-D */

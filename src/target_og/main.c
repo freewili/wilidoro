@@ -9,6 +9,7 @@
 #include "fwog_display.h"
 #include "hal.h"
 #include "hardware/clocks.h"
+#include "hardware/pio.h"
 #include "lvgl.h"
 #include "lvgl_port_og.h"
 #include "pico/stdlib.h"
@@ -38,6 +39,12 @@ int main(void) {
         st7789_dma_wait();
     }
 
+    /* pio0 sm0 -- the BSP's documented allocation (sm1 PDM, sm2 I2S). This is
+       also what makes fwog_power_poll()'s red-hold countdown visible: it only
+       paints the bar if ws2812_ready(). */
+    const bool leds_ok = ws2812_init(pio0, 0);
+    if (!leds_ok) DIAG("[wilidoro] ws2812 init FAILED\n");
+
     lvgl_port_og_init();
     app_init();               /* builds screens, starts the tick timer */
     lv_timer_handler();       /* first frame */
@@ -55,7 +62,8 @@ int main(void) {
         lv_timer_handler();
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
-            DIAG("[wilidoro] alive (panel=%s)\n", panel_ok ? "ok" : "FAILED");
+            DIAG("[wilidoro] alive (panel=%s leds=%s)\n",
+                 panel_ok ? "ok" : "FAILED", leds_ok ? "ok" : "FAILED");
         }
         sleep_ms(2);
     }

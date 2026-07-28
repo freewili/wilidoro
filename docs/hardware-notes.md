@@ -573,6 +573,32 @@ starts appearing — and is also where `hal_power_armed()`'s guard in
 `src/app/app.c` starts doing real work, by keeping the app's own LED writes
 off the bar while the BSP is drawing that countdown.
 
+## FreeWili OG — LED brightness ceiling (not yet bench-confirmed)
+
+Plan OG-B (Task 1) wired up the OG's 7-LED WS2812 ring: `hal_led_set/brightness/show`
+in `src/hal/hal_og.c` now drive `ws2812_set_color()`/`ws2812_process()` for real, and
+`ws2812_init(pio0, 0)` runs in `src/target_og/main.c` before `lvgl_port_og_init()`.
+Unlike the FreeWili 2's BSP, the OG's `ws2812_driver` has **no hardware brightness
+control** — there is no `ws2812_set_brightness()` counterpart — so `hal_led_brightness()`
+scales r/g/b in software before each `ws2812_set_color()` call.
+
+The ceiling actually in effect on this board today is **`LED_BRIGHT_MAX = 40` (of 255)**
+in `src/app/app.c` — the same constant and the same value as the FreeWili 2 section
+above. **This number has not been bench-confirmed on the OG.** It was carried over
+unchanged because the app-level brightness cap lives above the HAL and this task did
+not touch it; nobody has looked at the OG's 7-LED ring lit at this level, on this
+board, in any ambient light, and judged it. Unlike the FreeWili 2 entry above, there is
+no "verified comfortable on real hardware" claim to make here yet.
+
+The OG's ring is 7 LEDs versus the FreeWili 2's 16, and WS2812 packages vary between
+board revisions, so 40/255 comfortable on the FW2 is not guaranteed to be right here —
+it could easily need its own per-board value. If a bench session finds it too bright or
+too dim, record the chosen number here (with the ambient conditions it was judged
+under, as the FW2 entry does) rather than adjusting `LED_BRIGHT_MAX` blind; if it does
+need to differ from the FW2's, `hal_led_brightness()` in `src/hal/hal_og.c` is the
+correct place to apply an OG-specific scale without touching the shared app-level
+constant.
+
 ---
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule
