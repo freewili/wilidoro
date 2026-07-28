@@ -925,7 +925,11 @@ Expected: both build; the main app carries the new display image over.
 
 - [ ] **Step 6: Verify on hardware**
 
-Run: `python wiliOGbsp/tools/fw.py console --cpu display`
+Run: `python wiliOGbsp/tools/fw.py console --product "FWOG display"`
+
+(`console` takes `--port`/`--product`; `--cpu` belongs to `bootsel`. It also
+reads stdin to EOF, so it exits immediately under a non-interactive shell —
+run it from an interactive terminal to watch the button lines arrive.)
 
 Press each of the five buttons in turn. Expected: `button 0` for grey through
 `button 4` for red, one line per press with no repeats or missed edges.
