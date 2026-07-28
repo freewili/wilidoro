@@ -18,6 +18,27 @@ int main(void) {
     board_init();
     hal_init();
 
+    /* Bounded, not unbounded. st7789_init_begin() can fail to leave
+       ST7789_INIT_IDLE when clk_peri cannot reach the panel rate, which makes
+       st7789_init_step() a permanent no-op -- and this CPU has no watchdog to
+       recover a spin. 500 ms is comfortably more than the ~125 ms a healthy
+       init needs. Do not remove the deadline. */
+    st7789_init_begin();
+    const absolute_time_t lcd_deadline = make_timeout_time_ms(500);
+    while (!st7789_ready() && !time_reached(lcd_deadline)) st7789_init_step();
+    const bool lcd_ready = st7789_ready();
+    if (!lcd_ready) {
+        DIAG("[wilidoro] st7789 init FAILED\n");
+    } else {
+        st7789_clear(0x0000u);           /* wipe the bootloader's leftover UI */
+        st7789_dma_wait();
+    }
+    /* This early DIAG is frequently dropped -- USB CDC has not enumerated yet
+       at this point in boot (board_init()'s own DIAG suffers the same fate,
+       see the FreeWili OG lcd_display app for the documented precedent), so
+       the 1 Hz heartbeat below repeats the panel status where it is
+       reliably observed. */
+
     lvgl_port_og_init();
 
     /* A label proves the panel, the flush path and the font all work. */
@@ -40,7 +61,8 @@ int main(void) {
 
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
-            DIAG("[wilidoro] display alive\n");
+            DIAG("[wilidoro] display alive (panel=%s)\n",
+                 lcd_ready ? "ok" : "FAILED");
         }
         lv_timer_handler();
         sleep_ms(2);
