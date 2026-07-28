@@ -471,21 +471,25 @@ since this is the number every later OG task depends on:
 
 ```
 Memory region         Used Size  Region Size  %age Used
-           FLASH:      408752 B     16252 KB      2.46%
-             RAM:      151720 B       256 KB     57.88%
+           FLASH:      418092 B     16252 KB      2.51%
+         XIP_RAM:           0 B        16 KB      0.00%
+             RAM:      152188 B       256 KB     58.06%
        SCRATCH_X:           0 B         4 KB      0.00%
        SCRATCH_Y:          2 KB         4 KB     50.00%
 ```
 
-**RAM used: 151 720 bytes (~148.2 KB) of the RP2040's 264 KB total SRAM**
-(256 KB `RAM` region + 4 KB `SCRATCH_X` + 4 KB `SCRATCH_Y`), measured with one
-label ("25:00" in Montserrat 40) on screen. That is higher than the spec's
-~110–135 KB estimate — the two 320x40 LVGL draw buffers account for 50 KB and
-`LV_MEM_SIZE` (shared with the FW2 config, unchanged at 64 KB) accounts for
-another 64 KB, leaving ~34 KB for app code's data/bss and both cores' stacks —
-but it is well under the ~200 KB stop threshold in the task brief, so
-`LV_MEM_SIZE` was left unchanged. Flash usage (408 752 B of 16 MB) is a
-non-issue, as expected.
+**RAM used: 152 188 bytes (~148.6 KB) of the RP2040's 264 KB total SRAM**
+(256 KB `RAM` region + 4 KB `SCRATCH_X` + 4 KB `SCRATCH_Y`), measured with the
+full Plan A app running (neon theme, buttons, softkeys) rather than the Task 4
+standalone label -- this is a few hundred bytes above the 151 720 B first
+measured with just a label on screen, which is the app logic and the 1 Hz
+panel-status heartbeat, not a new large consumer. That is higher than the
+spec's ~110–135 KB estimate — the two 320x40 LVGL draw buffers account for
+50 KB and `LV_MEM_SIZE` (shared with the FW2 config, unchanged at 64 KB)
+accounts for another 64 KB, leaving ~34 KB for app code's data/bss and both
+cores' stacks — but it is well under the ~200 KB stop threshold in the task
+brief, so `LV_MEM_SIZE` was left unchanged. Flash usage (418 092 B of 16 MB) is
+a non-issue, as expected.
 
 **No RGB565 byte swap was needed.** `st7789_rgb565()` in the BSP
 (`wiliOGbsp/bsp/display_cpu/lcd/st7789.c`) packs a plain (non-swapped) RGB565
@@ -495,8 +499,45 @@ first — `st7789_blit()` already converts each native `uint16_t` pixel to
 big-endian wire bytes itself (`px[i] >> 8` then `px[i] & 0xFF` per pixel, see
 `st7789_blit()`). So `lvgl_port_og.c`'s `flush_cb()` hands `st7789_blit()` the
 LVGL draw buffer directly with no `lv_draw_sw_rgb565_swap()` call, matching
-the brief's default. This has not been visually confirmed on the panel (no
-camera available in this session) — see the flashing note below.
+the brief's default. **This was visually confirmed on the panel**: the digits
+render warm orange as designed, not blue/cyan-shifted, which is exactly what a
+byte-swap bug would have produced — empirical proof the no-swap decision above
+is correct, not just architecturally consistent.
+
+## FreeWili OG bring-up — two hardware lessons
+
+Both of these were hit during this branch's bring-up and, until now, only
+lived in commit messages and code comments. Recorded here because this file is
+"the record" (see the README).
+
+**1. The main-CPU watchdog reset loop, and why it is worse than it looks.**
+`board_init()` on the main CPU arms a 2 s watchdog, and every main app is
+required to call `board_watchdog_kick()` on every loop iteration
+(`src/main_og/main.c` does, as its first statement). Omitting the kick builds,
+links and flashes cleanly, then resets the board every 2 s forever — and takes
+the display CPU down with it, because `board_init()` on the main CPU holds the
+display in reset via `GUI_NRESET`. The expensive part: recovering from this
+loop required **physically disconnecting the battery**. Software power-off
+lives entirely on the *display* CPU (the red-button hold countdown), so a
+main-CPU reset loop that holds the display in reset prevents the power-off
+code from ever running, which means the board cannot be power-cycled by
+software, which means BOOTSEL can never be sampled either. A missing watchdog
+kick is not a "notice it and fix it" bug on this board — it is a "get the
+screwdriver out" bug.
+
+**2. The missing ST7789 initialisation, and why "it looks fine" is not
+evidence.** `st7789_set_window()` and `st7789_blit()` both silently no-op
+while `st7789_ready()` is false, and the bootloader's `bl_jump_to_app()`
+branches straight to the app's reset vector — crt0 zeroes the driver's static
+state (including the "ready" flag) on *every* boot, regardless of what the
+bootloader itself left rendered on the panel. The app must therefore run the
+bounded `st7789_init_begin()` / `st7789_init_step()` sequence itself before
+its first flush (`src/target_og/main.c` does, before `lvgl_port_og_init()`).
+The observed symptom of skipping this was deceptive: a healthy-looking app —
+1 Hz heartbeats over DIAG, LVGL reporting successful flushes — with the
+bootloader's stale UI frozen on the panel the whole time. Nothing in the
+console output would have told you the panel was never actually written to;
+only looking at the panel itself would.
 
 ---
 

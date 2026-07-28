@@ -2,6 +2,8 @@
 
 A Pomodoro timer for the [FreeWili 2](https://github.com/freewili/freewili2-docs) (RP2350B) that uses the whole board: three switchable themes on the LCD, a 16-LED progress ring, synthesized per-theme chimes, ambient auto-dim, tilt-to-pause over the IMU, a room-readable countdown on the DVI output, and a sub-GHz beacon so a room full of them can see each other's sessions.
 
+Wilidoro also now runs on the **FreeWili OG** (FreeWili 1 / Classic, two RP2040s) as a second board target. See [FreeWili OG](#freewili-og) below for what works there today and how to build it — the FW2 content above and through "Architecture" describes the original, more full-featured board.
+
 ![Neon Arc theme running a focus session](docs/images/theme-neon-arc.jpg)
 
 Bare-metal C11 + Pico SDK + LVGL 9 on top of [`wilibsp`](https://github.com/freewili/wilibsp). No RTOS, no TinyUSB, fully polled.
@@ -51,6 +53,25 @@ The projector in that photo is an inexpensive [1080p WiFi/Bluetooth mini project
 
 Controls are the five coloured buttons (mapped to on-screen softkey columns), the D-pad, and the touchscreen.
 
+## FreeWili OG
+
+The **FreeWili OG** (FreeWili 1 / Classic) is a second, supported board target: two RP2040s (a "display" CPU and a "main" CPU), an ST7789 320×240 panel, 7 WS2812 LEDs and 5 buttons — no touch, no light sensor, no DVI. `src/core/`, `src/app/` and `src/ui/` are shared verbatim with the FW2; only `src/hal/` differs per board.
+
+**Working today (Plan A):** the Neon Arc theme, relaid out for 320×240; the 5 physical buttons driving the same softkey columns as the FW2; the panel itself, including the bounded ST7789 init the display CPU must run on every boot.
+
+**Deferred to later plans:** the LEDs, audio, tilt-to-pause, the sub-GHz beacon, the two remaining themes, and the Settings/Nearby screens. `hal_caps()` already reports these gaps honestly (`leds=false`, `audio=false`, etc.), but nothing on the OG's timer face surfaces that yet — this repo tries to be honest about the gap between "built" and "wired up".
+
+### Building and flashing the OG
+
+```sh
+powershell -File tools/build_og.ps1       # -> build-og/wilidoro_display.uf2, build-og/wilidoro_main.uf2
+powershell -File tools/flash_og.ps1       # flashes wilidoro_main (the only app you may flash — see below)
+```
+
+`-DWILIDORO_BOARD=fw2|og` is what selects the target; `tools/build.ps1` and `tools/build_og.ps1` are thin wrappers around it that also point CMake at the right board config and build directory (`build/` vs `build-og/`). `PICO_BOARD` is a single global CMake cache value, so one configure cannot produce both boards — always go through the two build scripts, not a hand-rolled `cmake` invocation.
+
+**A display application must never be UF2-flashed. This is not a style preference — it bricks the display CPU's USB.** The display CPU has no BOOTSEL button; the only way to update it is for the main CPU to push the display image over the inter-CPU link, metadata sector and all. Only `wilidoro_main` gets flashed by UF2 — it embeds the display image and carries it across at boot. `tools/flash_og.ps1` enforces this: it refuses outright if you ask it to flash anything named `*_display`.
+
 ## Building
 
 Needs the Pico SDK and ARM GCC under `~/.pico-sdk` (the layout the official VS Code extension installs), plus CMake and Ninja.
@@ -89,9 +110,11 @@ The rule that shapes everything: **the HAL is the only hardware seam**, so the i
 ```
 src/core/     pure logic, zero dependencies — pomodoro FSM, beacon codec, tilt gate, dimming curve
 src/app/      pure app logic + the LVGL-aware controller — timer_view, led_pattern, sound, dvi_view
-src/ui/       LVGL screens and the three themes
-src/hal/      hal.h is the seam; hal_target.c (wilibsp) and hal_sim.c (SDL) are its only implementations
-src/target/   device main + LVGL display/touch port
+src/ui/       LVGL screens and the themes, shared between both boards
+src/hal/      hal.h is the seam; hal_target.c (FW2/wilibsp), hal_sim.c (SDL) and hal_og.c (OG display CPU) are its implementations
+src/target/   FW2 device main + LVGL display/touch port
+src/target_og/  OG display-CPU main + LVGL/ST7789 port
+src/main_og/  OG main-CPU radio app — exists to carry the display image over the inter-CPU link
 src/sim/      desktop main
 tests/        greatest.h unit tests over src/core and src/app
 ```
@@ -131,7 +154,8 @@ Wilidoro's own code is MIT. These vendored files and submodules keep their own t
 | [greatest](https://github.com/silentbicycle/greatest) | `tests/greatest.h` | ISC — © 2011–2021 Scott Vokes |
 | Pico SDK import shim | `pico_sdk_import.cmake` | BSD-3-Clause — © Raspberry Pi Ltd |
 | [LVGL](https://github.com/lvgl/lvgl) 9.2.2 | `third_party/lvgl` submodule; `config/lv_conf.h` derived from its template | MIT |
-| [`wilibsp`](https://github.com/freewili/wilibsp) | `wilibsp` submodule | see that repository |
+| [`wilibsp`](https://github.com/freewili/wilibsp) | `wilibsp` submodule (FreeWili 2) | see that repository |
+| [`wiliOGbsp`](https://github.com/freewili/wiliOGbsp) | `wiliOGbsp` submodule (FreeWili OG) | see that repository |
 
 ## License
 

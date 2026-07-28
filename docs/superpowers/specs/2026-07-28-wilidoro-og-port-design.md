@@ -1,7 +1,9 @@
 # Wilidoro on the FreeWili OG — port design
 
 **Date:** 2026-07-28
-**Status:** approved, not yet implemented
+**Status:** Plan A implemented and hardware-verified. Plans OG-B through OG-D
+(LEDs, audio, tilt, the remaining two themes, Settings/Nearby, the sub-GHz
+beacon) remain to be built.
 
 Port wilidoro to the FreeWili OG (FreeWili 1 / Classic) on top of
 [`wiliOGbsp`](https://github.com/freewili/wiliOGbsp), as a second board target
@@ -126,9 +128,12 @@ BOOTSEL, flash, console).
 ## HAL: `hal_og.c`
 
 `hal_caps_t` for the OG: `radio=true, imu=true, light=false, audio=true,
-buttons=true, leds=true, dvi=false`. The timer face already renders crossed-out
-icons for absent features, so both gaps are an existing, designed-for state
-rather than new UI work.
+buttons=true, leds=true, dvi=false`. `hal_caps()` reports absent hardware
+honestly, but nothing on the timer face surfaces it -- `hal_caps()`'s only
+reader is `screen_settings.c`, which prints a text string (e.g. "no imu") and
+is compiled out entirely on the OG (Settings is not yet ported). Surfacing
+capability gaps on the OG's timer face is later-plan work, not something that
+already exists.
 
 | Entry point | OG implementation |
 |---|---|
@@ -168,8 +173,14 @@ two 320×40 partial buffers. The display flush stays blocking, as on FW2.
 
 Themes are relaid out from 480×320 to 320×240 — same faces, same palettes,
 same `theme_t` interface. The large `MM:SS` face drops from Montserrat 48 to
-Montserrat 40: `config/lv_conf.h` already declares `LV_FONT_MONTSERRAT_40`
-(currently `0`), so this is enabling one line, per board.
+Montserrat 40: `config/lv_conf.h` declares `LV_FONT_MONTSERRAT_40`. That font
+is enabled **unconditionally for every target**, not per board:
+`config/lv_conf.h` cannot see `WILIDORO_BOARD_OG` (it is a `PRIVATE` compile
+definition on the `wilidoro_display` target, and `lvgl` is a separate target
+that never gets it). The FW2 build links the extra font in but never
+references it, and `--gc-sections` drops the unused glyph data from that
+binary, so this costs the FW2 nothing -- it is not the one-line-per-board
+switch it might sound like.
 
 ### RAM budget (RP2040, 264 KB)
 

@@ -1402,9 +1402,11 @@ Expected on the panel: the neon timer face at 320×240, reading `25:00` idle.
 - Press the softkey that starts a session — the countdown runs, one second per second.
 - Press pause — it stops; press again — it resumes.
 - Press reset — back to `25:00`.
-- The LED ring stays dark and the chime is silent (Plan OG-B), and the timer
-  face shows crossed-out icons for the light, DVI, radio, audio, IMU and LED
-  capabilities that `hal_caps()` reports false.
+- The LED ring stays dark and the chime is silent (Plan OG-B). `hal_caps()`
+  correctly reports the light, DVI, radio, audio, IMU and LED capabilities as
+  false, but nothing on the timer face surfaces that yet -- `hal_caps()`'s
+  only reader is `screen_settings.c`, which is compiled out on the OG.
+  Surfacing capability gaps on the timer face itself is later-plan work.
 
 Confirm the softkey labels match what the buttons actually do, given red is
 also the power button.
