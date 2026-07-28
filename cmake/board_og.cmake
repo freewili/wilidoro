@@ -29,6 +29,7 @@ add_subdirectory(wiliOGbsp/bsp)
 # ---- display CPU ----
 add_executable(wilidoro_display
     src/target_og/main.c
+    src/target_og/lvgl_port_og.c
     src/hal/hal_og.c
 )
 target_include_directories(wilidoro_display PRIVATE
@@ -38,8 +39,11 @@ target_include_directories(wilidoro_display PRIVATE
 target_link_libraries(wilidoro_display PRIVATE
     pico_stdlib hardware_clocks hardware_gpio hardware_spi hardware_dma
     hardware_irq hardware_pwm hardware_i2c hardware_pio
-    fwog_display_bsp
+    fwog_display_bsp lvgl
 )
+# Task 4 measures the RAM baseline every later OG task is judged against; this
+# SDK does not print region usage by default, so ask the linker for it.
+target_link_options(wilidoro_display PRIVATE -Wl,--print-memory-usage)
 fwog_display_app(wilidoro_display
     VERSION 001
     DESCRIPTION "Pomodoro timer: themed countdown, LED progress ring, chimes and tilt-to-pause")

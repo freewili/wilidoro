@@ -460,6 +460,44 @@ before flashing.**
    on the Nearby screen. Until then the Nearby screen showing nothing on hardware
    is expected and proves nothing either way.
 
+## FreeWili OG — LVGL 9 RAM baseline (Plan OG-A, Task 4)
+
+`wilidoro_display` now links LVGL 9 in partial-render mode (two 320x40 buffers)
+against the ST7789 panel, driven through `src/target_og/lvgl_port_og.c`. The
+build script (`tools/build_og.ps1`) did not print linker region usage by
+default on this SDK (2.3.0) — `target_link_options(wilidoro_display PRIVATE
+-Wl,--print-memory-usage)` was added to `cmake/board_og.cmake` to surface it,
+since this is the number every later OG task depends on:
+
+```
+Memory region         Used Size  Region Size  %age Used
+           FLASH:      408752 B     16252 KB      2.46%
+             RAM:      151720 B       256 KB     57.88%
+       SCRATCH_X:           0 B         4 KB      0.00%
+       SCRATCH_Y:          2 KB         4 KB     50.00%
+```
+
+**RAM used: 151 720 bytes (~148.2 KB) of the RP2040's 264 KB total SRAM**
+(256 KB `RAM` region + 4 KB `SCRATCH_X` + 4 KB `SCRATCH_Y`), measured with one
+label ("25:00" in Montserrat 40) on screen. That is higher than the spec's
+~110–135 KB estimate — the two 320x40 LVGL draw buffers account for 50 KB and
+`LV_MEM_SIZE` (shared with the FW2 config, unchanged at 64 KB) accounts for
+another 64 KB, leaving ~34 KB for app code's data/bss and both cores' stacks —
+but it is well under the ~200 KB stop threshold in the task brief, so
+`LV_MEM_SIZE` was left unchanged. Flash usage (408 752 B of 16 MB) is a
+non-issue, as expected.
+
+**No RGB565 byte swap was needed.** `st7789_rgb565()` in the BSP
+(`wiliOGbsp/bsp/display_cpu/lcd/st7789.c`) packs a plain (non-swapped) RGB565
+value, and — unlike the FW2's `st7796_blit_rect()`, which writes the pixel
+buffer's bytes to the wire as-is and therefore needs LVGL's software swap
+first — `st7789_blit()` already converts each native `uint16_t` pixel to
+big-endian wire bytes itself (`px[i] >> 8` then `px[i] & 0xFF` per pixel, see
+`st7789_blit()`). So `lvgl_port_og.c`'s `flush_cb()` hands `st7789_blit()` the
+LVGL draw buffer directly with no `lv_draw_sw_rgb565_swap()` call, matching
+the brief's default. This has not been visually confirmed on the panel (no
+camera available in this session) — see the flashing note below.
+
 ---
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule
