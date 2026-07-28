@@ -524,9 +524,12 @@ incident we reasoned that recovery required **physically disconnecting the
 battery**, on the grounds that software power-off lives entirely on the
 *display* CPU, so a main-CPU reset loop holding the display in reset prevents
 the power-off from ever running — no power cycle, therefore no BOOTSEL.
-**That reasoning is refuted by measurement.** `wiliOGbsp`'s hardware record
-(`docs/hardware/facts.md`, fact 49) measured, with a negative control, that a
-**watchdog reset does re-sample the BOOTSEL strap**. So holding red through a
+**That reasoning is refuted by measurement.** The FreeWili OG hardware record
+measured, with a negative control, that a **watchdog reset does re-sample the
+BOOTSEL strap** (`docs/hardware/facts.md`, fact 49). Note that this record is
+maintainer-held and **not** part of the published `wiliOGbsp` submodule pinned
+here — that repository ships only `docs/hardware/pinmap.md` — so the citation
+cannot be checked from this tree alone. So holding red through a
 reset should recover it, and no battery disconnect is needed. (One link in
 that chain is reasoned rather than measured — the control had display GPIO 8
 driven high, whereas the display-never-runs case rests on the `PADS_BANK0`

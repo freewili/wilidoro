@@ -54,7 +54,9 @@ bool hal_lux(float *lux);
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]);
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]);
 
-/* Which features are live this build (crossed-out icons on the timer face). */
+/* Which features are live this build. Every backend reports these honestly,
+   but the only consumer is screen_settings.c, which renders them as text --
+   there are no crossed-out icons on the timer face, on either board. */
 typedef struct { bool radio, imu, light, audio, buttons, leds, dvi; } hal_caps_t;
 hal_caps_t hal_caps(void);
 #endif
