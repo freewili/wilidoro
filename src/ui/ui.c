@@ -19,7 +19,7 @@ lv_obj_t *ui_screen(void) {
 }
 lv_obj_t *ui_softkey_bar(lv_obj_t *parent, ui_softkey_cb_t cb) {
     lv_obj_t *bar = lv_obj_create(parent);
-    lv_obj_set_size(bar, 480, 34);
+    lv_obj_set_size(bar, UI_W, UI_SOFTKEY_H);
     lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, 0);
     lv_obj_set_style_bg_color(bar, lv_color_hex(0x0D1420), 0);
     lv_obj_set_style_pad_all(bar, 2, 0);
@@ -27,7 +27,7 @@ lv_obj_t *ui_softkey_bar(lv_obj_t *parent, ui_softkey_cb_t cb) {
     lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     for (int i = 0; i < 5; i++) {
         lv_obj_t *btn = lv_button_create(bar);
-        lv_obj_set_size(btn, 92, 28);
+        lv_obj_set_size(btn, UI_SOFTKEY_BTN_W, UI_SOFTKEY_BTN_H);
         lv_obj_set_style_bg_color(btn, lv_color_hex(SK_COLORS[i]), 0);
         lv_obj_set_style_radius(btn, 4, 0);
         lv_obj_set_user_data(btn, (void*)(intptr_t)i);

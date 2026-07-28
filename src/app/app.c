@@ -3,12 +3,16 @@
 #include "sound.h"
 #include "ui.h"
 #include "screen_timer.h"
+#if !defined(WILIDORO_BOARD_OG)
 #include "screen_settings.h"
 #include "screen_nearby.h"
+#endif
 #include "dimming.h"
 #include "led_pattern.h"
 #include "timer_view.h"
+#if !defined(WILIDORO_BOARD_OG)
 #include "dvi_view.h"
+#endif
 #include "tilt.h"
 #include "lvgl.h"
 
@@ -26,7 +30,9 @@ static uint32_t s_next_lux;
 static uint32_t s_next_beacon_ms;   /* next beacon transmit deadline */
 static uint32_t s_next_tick_ms;    /* next focus tick (0 = none scheduled) */
 static uint32_t s_alarm_next_ms;   /* next alarm re-ring while un-dismissed */
+#if !defined(WILIDORO_BOARD_OG)
 static dvi_dirty_t s_dvi_dirty;
+#endif
 
 /* Re-ring the un-acknowledged focus-end alarm on this cadence (the spec calls
    for ring-until-acknowledged; each ring is a one-shot sequence). */
@@ -72,7 +78,9 @@ static void sound_cb(lv_timer_t *t) {
 /* Blank/unblank the DVI output and force a repaint next tick when re-enabled. */
 void app_dvi_apply(void) {
     hal_dvi_enable(s_app.settings.dvi_on);
+#if !defined(WILIDORO_BOARD_OG)
     if (s_app.settings.dvi_on) dvi_dirty_reset(&s_dvi_dirty);
+#endif
 }
 
 /* Re-prime the gate so enabling the feature adopts the board's current
@@ -84,8 +92,12 @@ static void route_softkey(int col) {
     app_sound(SND_BLIP);
     switch (s_app.screen) {
         case SCREEN_TIMER:    screen_timer_softkey(col);    break;
+#if !defined(WILIDORO_BOARD_OG)
         case SCREEN_SETTINGS: screen_settings_softkey(col); break;
         case SCREEN_NEARBY:   screen_nearby_softkey(col);   break;
+#else
+        default: break;
+#endif
     }
 }
 
@@ -206,6 +218,7 @@ static void tick_cb(lv_timer_t *t) {
 
     /* per-theme LED pattern */
     timer_view_t lv = timer_view_make(&s_app.pomo, s_app.alarm_active, now);
+#if !defined(WILIDORO_BOARD_OG)
     /* Big-room DVI display: repaint only when the visible content changes. The
        countdown ticks once a second, so the 200 ms cadence is ample. */
     hal_dvi_surface_t ds;
@@ -215,6 +228,7 @@ static void tick_cb(lv_timer_t *t) {
             dvi_view_render(s_app.settings.theme, &lv, &vs);
         }
     }
+#endif
     led_rgb_t leds[LED_COUNT_MAX];
     const int nled = hal_led_count();
     led_pattern_render(s_app.settings.theme, &lv, leds, nled);
@@ -224,8 +238,12 @@ static void tick_cb(lv_timer_t *t) {
     /* refresh the active screen */
     switch (s_app.screen) {
         case SCREEN_TIMER:    screen_timer_update();    break;
+#if !defined(WILIDORO_BOARD_OG)
         case SCREEN_SETTINGS: screen_settings_update(); break;
         case SCREEN_NEARBY:   screen_nearby_update();   break;
+#else
+        default: break;
+#endif
     }
 }
 
@@ -242,7 +260,9 @@ void app_init(void) {
     neighbor_table_init(&s_app.neighbors);
     dim_init(&s_dim, 100.0f);
     tilt_init(&s_tilt);
+#if !defined(WILIDORO_BOARD_OG)
     dvi_dirty_reset(&s_dvi_dirty);
+#endif
     s_next_lux = 0;
     s_next_beacon_ms = 0;
     s_app.screen = SCREEN_TIMER; s_app.alarm_active = false;
@@ -250,8 +270,10 @@ void app_init(void) {
     s_next_tick_ms = 0; s_alarm_next_ms = 0;
 
     s_scr[SCREEN_TIMER]    = screen_timer_create();
+#if !defined(WILIDORO_BOARD_OG)
     s_scr[SCREEN_SETTINGS] = screen_settings_create();
     s_scr[SCREEN_NEARBY]   = screen_nearby_create();
+#endif
     lv_screen_load(s_scr[SCREEN_TIMER]);
 
     lv_timer_create(tick_cb, 200, NULL);

@@ -1,4 +1,5 @@
 #include "theme.h"
+#include "ui.h"
 #include <stdio.h>
 
 #define NEON_BG     0x0C0C12
@@ -28,7 +29,7 @@ static void neon_build(lv_obj_t *face) {
 
     s_time = lv_label_create(face);
     lv_obj_set_style_text_color(s_time, lv_color_hex(NEON_TEXT), 0);
-    lv_obj_set_style_text_font(s_time, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(s_time, UI_FONT_BIG, 0);
     lv_obj_align(s_time, LV_ALIGN_CENTER, 0, -16);
     lv_label_set_text(s_time, "25:00");
 

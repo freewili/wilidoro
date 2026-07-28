@@ -1,6 +1,26 @@
 #ifndef WILIDORO_UI_H
 #define WILIDORO_UI_H
 #include "lvgl.h"
+/* Panel geometry and the type scale that follows from it. The FreeWili 2's
+   ST7796 is 480x320; the OG's ST7789 is 320x240. Screens and themes lay out
+   against these rather than literals, so one set of sources serves both. */
+#if defined(WILIDORO_BOARD_OG)
+  #define UI_W               320
+  #define UI_H               240
+  #define UI_FONT_BIG        (&lv_font_montserrat_40)
+  #define UI_SOFTKEY_H       28
+  #define UI_SOFTKEY_BTN_W   60
+  #define UI_SOFTKEY_BTN_H   22
+#else
+  #define UI_W               480
+  #define UI_H               320
+  #define UI_FONT_BIG        (&lv_font_montserrat_48)
+  #define UI_SOFTKEY_H       34
+  #define UI_SOFTKEY_BTN_W   92
+  #define UI_SOFTKEY_BTN_H   28
+#endif
+/* The face is everything above the softkey bar. */
+#define UI_FACE_H           (UI_H - UI_SOFTKEY_H)
 /* neutral palette (Plan B2 themes override per-screen) */
 #define UI_BG      0x0C0C12
 #define UI_PANEL   0x141b26

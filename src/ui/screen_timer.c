@@ -21,7 +21,7 @@ void screen_timer_apply_theme(void) {
 lv_obj_t *screen_timer_create(void) {
     s_scr = ui_screen();
     s_face = lv_obj_create(s_scr);
-    lv_obj_set_size(s_face, 480, 286);
+    lv_obj_set_size(s_face, UI_W, UI_FACE_H);
     lv_obj_align(s_face, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_opa(s_face, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(s_face, 0, 0);
@@ -35,10 +35,19 @@ lv_obj_t *screen_timer_create(void) {
 }
 
 static void labels_for_state(const timer_view_t *v, const char *out[5]) {
+#if defined(WILIDORO_BOARD_OG)
+    /* Settings and Nearby are deferred to Plan OG-C: leave the last two
+       cells blank rather than offer a softkey that goes nowhere. */
+    static const char *idle[5]  = {"Start", 0, 0, 0, 0};
+    static const char *run[5]   = {"Pause", "Skip", "+5", 0, 0};
+    static const char *paused[5]= {"Resume","Skip", "+5", 0, 0};
+    static const char *alarm_l[5]={"Dismiss",0,0,0,0};
+#else
     static const char *idle[5]  = {"Start", 0, 0, "Nearby", "Menu"};
     static const char *run[5]   = {"Pause", "Skip", "+5", "Nearby", "Menu"};
     static const char *paused[5]= {"Resume","Skip", "+5", "Nearby", "Menu"};
     static const char *alarm_l[5]={"Dismiss",0,0,0,"Menu"};
+#endif
     const char **src = idle;
     if (v->alarm) src = alarm_l;
     else if (v->paused) src = paused;
@@ -58,28 +67,36 @@ void screen_timer_softkey(int col) {
     uint32_t now = hal_now_ms();
     if (a->alarm_active) {
         if (col==0) { pomodoro_acknowledge(&a->pomo, now); a->alarm_active=false; app_sound_stop(); }
+#if !defined(WILIDORO_BOARD_OG)
         else if (col==4) app_goto(SCREEN_SETTINGS);
+#endif
         return;
     }
     switch (a->pomo.state) {
         case PM_IDLE:
             if (col==0) { pomodoro_start_focus(&a->pomo, now); app_sound(SND_START); }
+#if !defined(WILIDORO_BOARD_OG)
             else if (col==3) app_goto(SCREEN_NEARBY);
             else if (col==4) app_goto(SCREEN_SETTINGS);
+#endif
             break;
         case PM_PAUSED:
             if (col==0) pomodoro_resume(&a->pomo, now);
             else if (col==1) pomodoro_skip(&a->pomo, now);
             else if (col==2) pomodoro_add5(&a->pomo, now);
+#if !defined(WILIDORO_BOARD_OG)
             else if (col==3) app_goto(SCREEN_NEARBY);
             else if (col==4) app_goto(SCREEN_SETTINGS);
+#endif
             break;
         default:
             if (col==0) pomodoro_pause(&a->pomo, now);
             else if (col==1) pomodoro_skip(&a->pomo, now);
             else if (col==2) pomodoro_add5(&a->pomo, now);
+#if !defined(WILIDORO_BOARD_OG)
             else if (col==3) app_goto(SCREEN_NEARBY);
             else if (col==4) app_goto(SCREEN_SETTINGS);
+#endif
             break;
     }
 }

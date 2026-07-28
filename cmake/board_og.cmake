@@ -31,7 +31,22 @@ add_executable(wilidoro_display
     src/target_og/main.c
     src/target_og/lvgl_port_og.c
     src/hal/hal_og.c
+    src/core/pomodoro.c
+    src/core/beacon.c
+    src/core/beacon_rx.c
+    src/core/tilt.c
+    src/core/dimming.c
+    src/app/app_model.c
+    src/app/app.c
+    src/app/timer_view.c
+    src/app/led_pattern.c
+    src/app/sound.c
+    src/ui/ui.c
+    src/ui/screen_timer.c
+    src/ui/theme.c
+    src/ui/theme_neon.c
 )
+target_compile_definitions(wilidoro_display PRIVATE WILIDORO_BOARD_OG=1)
 target_include_directories(wilidoro_display PRIVATE
     src/core src/hal src/app src/ui src/target_og
     config

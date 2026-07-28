@@ -7,6 +7,10 @@
 #include "lvgl.h"
 #include "fwog_display.h"
 #include "hal.h"
+#include "ui.h"
+
+_Static_assert(DISP_HOR == UI_W && DISP_VER == UI_H,
+               "LVGL panel geometry and the UI layout geometry disagree");
 
 #define BUF_LINES 40
 #define BUF_PX    (DISP_HOR * BUF_LINES)
