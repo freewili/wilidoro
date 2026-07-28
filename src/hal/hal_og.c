@@ -14,6 +14,18 @@ static hal_btn_t s_queue[BTN_QUEUE_LEN];
 static uint8_t   s_head, s_tail;
 static bool      s_power_armed;
 
+/* This board has no ambient-light sensor, so hal_lux() always returns false
+   (see below) and app.c's sensor_cb auto-dim block -- the only caller of
+   hal_led_brightness() anywhere in the app -- never runs on the OG. Without a
+   seed here s_led_bright would keep its 255 static initializer forever and
+   the LED ring would run uncapped. 40 mirrors LED_BRIGHT_MAX in src/app/app.c,
+   the FreeWili 2's bench-chosen indoor-comfort ceiling for its own (16-LED)
+   chain; the HAL deliberately does not #include app.c's header to reach that
+   macro, since it is app-layer, so this is its own constant kept in sync by
+   comment rather than by reference. Unlike the FW2, this is a fixed cap, not
+   a bright-room maximum that auto-dim can scale lower -- see hardware-notes.md. */
+#define FWOG_LED_BRIGHT_DEFAULT 40u
+
 static void queue_push(hal_btn_t b) {
     uint8_t next = (uint8_t)((s_head + 1u) % BTN_QUEUE_LEN);
     if (next == s_tail) return;          /* full: drop, never overwrite */
@@ -27,6 +39,7 @@ void hal_init(void) {
     /* board_init() is called by main() before hal_init(); it owns the panel,
        the I2C bus, the buttons and the backlight PWM divider. */
     hal_backlight(100);
+    hal_led_brightness((uint8_t)FWOG_LED_BRIGHT_DEFAULT);
 }
 
 /* Once per main-loop iteration. fwog_power_poll() is THE button read: calling

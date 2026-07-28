@@ -582,22 +582,39 @@ Unlike the FreeWili 2's BSP, the OG's `ws2812_driver` has **no hardware brightne
 control** — there is no `ws2812_set_brightness()` counterpart — so `hal_led_brightness()`
 scales r/g/b in software before each `ws2812_set_color()` call.
 
-The ceiling actually in effect on this board today is **`LED_BRIGHT_MAX = 40` (of 255)**
-in `src/app/app.c` — the same constant and the same value as the FreeWili 2 section
-above. **This number has not been bench-confirmed on the OG.** It was carried over
-unchanged because the app-level brightness cap lives above the HAL and this task did
-not touch it; nobody has looked at the OG's 7-LED ring lit at this level, on this
-board, in any ambient light, and judged it. Unlike the FreeWili 2 entry above, there is
-no "verified comfortable on real hardware" claim to make here yet.
+**The board has no auto-dim path to drive `hal_led_brightness()` at runtime.**
+`hal_led_brightness()`'s only caller anywhere in the app is `sensor_cb`'s auto-dim
+block in `src/app/app.c`, gated on `hal_lux()` succeeding — and `hal_lux()` is
+hardcoded to return false on the OG (no ambient-light sensor on this board). Left
+alone, that means `hal_led_brightness()` is never called at runtime and the ring
+runs at its `s_led_bright` static initializer, uncapped. To avoid that, `hal_init()`
+in `src/hal/hal_og.c` now seeds `s_led_bright` directly via
+`hal_led_brightness(FWOG_LED_BRIGHT_DEFAULT)`, `FWOG_LED_BRIGHT_DEFAULT` = **40**
+(of 255).
 
-The OG's ring is 7 LEDs versus the FreeWili 2's 16, and WS2812 packages vary between
-board revisions, so 40/255 comfortable on the FW2 is not guaranteed to be right here —
-it could easily need its own per-board value. If a bench session finds it too bright or
-too dim, record the chosen number here (with the ambient conditions it was judged
-under, as the FW2 entry does) rather than adjusting `LED_BRIGHT_MAX` blind; if it does
-need to differ from the FW2's, `hal_led_brightness()` in `src/hal/hal_og.c` is the
-correct place to apply an OG-specific scale without touching the shared app-level
-constant.
+That 40 **mirrors** `LED_BRIGHT_MAX = 40` in `src/app/app.c` — the FreeWili 2's
+bench-chosen indoor-comfort ceiling — but it is its own constant in `hal_og.c`,
+not a shared reference to the app-layer macro (the HAL should not depend on
+app.c's header), and it is **inherited, not bench-chosen for the OG**: nobody has
+looked at the OG's 7-LED ring lit at this level, on this board, in any ambient
+light, and judged it. There is no "verified comfortable on real hardware" claim
+to make here yet.
+
+**This is also a different kind of number than the FW2's, not just an unconfirmed
+copy of it.** On the FreeWili 2, `LED_BRIGHT_MAX` is a *bright-room maximum* that
+the OPT4001 auto-dim path scales *down* from in a dimmer room. The OG has no
+ambient-light sensor and no auto-dim path at all, so `FWOG_LED_BRIGHT_DEFAULT` is
+a **fixed cap** — whatever value it holds is what the ring runs at in every
+lighting condition, with no room-brightness compensation, ever. Whoever tunes this
+should pick a single number that works across the conditions this board is
+actually used in, not a "bright room" ceiling.
+
+The OG's ring is 7 LEDs versus the FreeWili 2's 16, and WS2812 packages vary
+between board revisions, so 40/255 comfortable on the FW2 is not guaranteed to be
+right here — it could easily need its own per-board value. If a bench session
+finds it too bright or too dim, update `FWOG_LED_BRIGHT_DEFAULT` in
+`src/hal/hal_og.c` and record the chosen number and the ambient conditions it was
+judged under here, the same way the FW2 entry does.
 
 ## FreeWili OG — chimes over I2S (not yet ear-confirmed)
 
