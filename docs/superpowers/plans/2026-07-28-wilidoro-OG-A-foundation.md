@@ -1351,10 +1351,30 @@ There is **no** `app_tick()`. `app_init()` starts an LVGL timer that drives the
 app, so the loop only pumps the HAL and LVGL — this mirrors `src/target/main.c`
 exactly. Add `#include "app.h"` at the top.
 
+**Do NOT drop the ST7789 init block.** Task 4 added it after a hardware failure:
+without it `st7789_ready()` is false forever and every flush silently no-ops,
+leaving the bootloader's UI on the panel. Keep it exactly where it is, before
+`lvgl_port_og_init()`. Only the label block and the heartbeat go away.
+
 ```c
 int main(void) {
     board_init();
     hal_init();
+
+    /* Bounded, not unbounded. st7789_init_begin() can fail to leave
+       ST7789_INIT_IDLE when clk_peri cannot reach the panel rate, which makes
+       st7789_init_step() a permanent no-op -- and this CPU has no watchdog to
+       recover a spin. Do not remove the deadline. */
+    st7789_init_begin();
+    const absolute_time_t lcd_deadline = make_timeout_time_ms(500);
+    while (!st7789_ready() && !time_reached(lcd_deadline)) st7789_init_step();
+    if (!st7789_ready()) {
+        DIAG("[wilidoro] st7789 init FAILED\n");
+    } else {
+        st7789_clear(0x0000u);
+        st7789_dma_wait();
+    }
+
     lvgl_port_og_init();
     app_init();               /* builds screens, starts the tick timer */
     lv_timer_handler();       /* first frame */
