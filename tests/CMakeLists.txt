@@ -57,3 +57,10 @@ target_include_directories(test_dvi_view PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${C
 target_compile_options(test_dvi_view PRIVATE -Wall -Wextra)
 target_link_libraries(test_dvi_view m)
 add_test(NAME test_dvi_view COMMAND test_dvi_view)
+
+add_executable(test_tone_synth test_tone_synth.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/tone_synth.c)
+target_include_directories(test_tone_synth PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../src/app)
+target_compile_options(test_tone_synth PRIVATE -Wall -Wextra)
+target_link_libraries(test_tone_synth m)
+add_test(NAME test_tone_synth COMMAND test_tone_synth)

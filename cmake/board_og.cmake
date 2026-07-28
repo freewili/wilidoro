@@ -41,6 +41,7 @@ add_executable(wilidoro_display
     src/app/timer_view.c
     src/app/led_pattern.c
     src/app/sound.c
+    src/app/tone_synth.c
     src/ui/ui.c
     src/ui/screen_timer.c
     src/ui/theme.c
