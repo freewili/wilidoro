@@ -232,6 +232,8 @@ bool hal_next_button(hal_btn_t *out) {
     return false;
 }
 
+bool hal_power_armed(void) { return false; }
+
 int hal_led_count(void) { return 16; }
 void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b) {
     if (i < 0 || i >= WS2812_NUM_PIXELS) return;

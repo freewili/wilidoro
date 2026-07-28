@@ -54,6 +54,8 @@ bool hal_next_button(hal_btn_t *out) {
     *out = q_buf[q_tail]; q_tail = (q_tail + 1) % QN; return true;
 }
 
+bool hal_power_armed(void) { return false; }
+
 /* LEDs — store state; a visible on-screen strip is a Plan C nicety, so keep it minimal here. */
 static uint8_t s_led_bri = 40;
 int hal_led_count(void) { return 16; }

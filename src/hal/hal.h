@@ -19,6 +19,11 @@ typedef enum {
 } hal_btn_t;
 bool hal_next_button(hal_btn_t *out);  /* dequeue next press edge; false if none */
 
+/* True while a hardware power-off countdown is running (FreeWili OG: red held).
+   The BSP paints that countdown on the LED bar itself, so the app must skip
+   its own LED writes while this is true. Always false on FreeWili 2. */
+bool hal_power_armed(void);
+
 /* LEDs. Count is board-dependent: 16 on FreeWili 2, 7 on the OG. */
 int  hal_led_count(void);
 void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b);

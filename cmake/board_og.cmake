@@ -29,6 +29,7 @@ add_subdirectory(wiliOGbsp/bsp)
 # ---- display CPU ----
 add_executable(wilidoro_display
     src/target_og/main.c
+    src/hal/hal_og.c
 )
 target_include_directories(wilidoro_display PRIVATE
     src/core src/hal src/app src/ui src/target_og
