@@ -516,14 +516,30 @@ required to call `board_watchdog_kick()` on every loop iteration
 (`src/main_og/main.c` does, as its first statement). Omitting the kick builds,
 links and flashes cleanly, then resets the board every 2 s forever — and takes
 the display CPU down with it, because `board_init()` on the main CPU holds the
-display in reset via `GUI_NRESET`. The expensive part: recovering from this
-loop required **physically disconnecting the battery**. Software power-off
-lives entirely on the *display* CPU (the red-button hold countdown), so a
-main-CPU reset loop that holds the display in reset prevents the power-off
-code from ever running, which means the board cannot be power-cycled by
-software, which means BOOTSEL can never be sampled either. A missing watchdog
-kick is not a "notice it and fix it" bug on this board — it is a "get the
-screwdriver out" bug.
+display in reset via `GUI_NRESET`. On the host the main CPU's COM port appears
+and vanishes on a ~2 s cycle, which looks exactly like a bricked board.
+
+What it actually cost, and a claim that turned out to be wrong: during the
+incident we reasoned that recovery required **physically disconnecting the
+battery**, on the grounds that software power-off lives entirely on the
+*display* CPU, so a main-CPU reset loop holding the display in reset prevents
+the power-off from ever running — no power cycle, therefore no BOOTSEL.
+**That reasoning is refuted by measurement.** `wiliOGbsp`'s hardware record
+(`docs/hardware/facts.md`, fact 49) measured, with a negative control, that a
+**watchdog reset does re-sample the BOOTSEL strap**. So holding red through a
+reset should recover it, and no battery disconnect is needed. (One link in
+that chain is reasoned rather than measured — the control had display GPIO 8
+driven high, whereas the display-never-runs case rests on the `PADS_BANK0`
+reset default — so treat "hold red through a reset" as strongly supported
+rather than proven.)
+
+In practice this board was recovered without either: the main CPU had already
+been put into BOOTSEL by an earlier host-triggered 1200-baud touch, and a
+corrected `wilidoro_main` was copied to the mounted volume.
+
+The lesson stands even with the severity corrected: a missing watchdog kick
+builds, links and flashes clean, and its symptom looks like a dead board
+rather than like a missing function call.
 
 **2. The missing ST7789 initialisation, and why "it looks fine" is not
 evidence.** `st7789_set_window()` and `st7789_blit()` both silently no-op
