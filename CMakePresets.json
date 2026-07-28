@@ -2,7 +2,12 @@
   "version": 3,
   "configurePresets": [
     { "name": "target", "generator": "Ninja", "binaryDir": "${sourceDir}/build",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" } }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "WILIDORO_BOARD": "fw2" } },
+    { "name": "og", "generator": "Ninja", "binaryDir": "${sourceDir}/build-og",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "WILIDORO_BOARD": "og" } }
   ],
-  "buildPresets": [ { "name": "target", "configurePreset": "target" } ]
+  "buildPresets": [
+    { "name": "target", "configurePreset": "target" },
+    { "name": "og", "configurePreset": "og" }
+  ]
 }
