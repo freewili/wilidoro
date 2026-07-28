@@ -278,3 +278,46 @@ flag and no way for the two modes to be live at once.
 Touch, DVI output, ambient auto-dim — no hardware. The OG's RTC, battery
 gauge, IR, PDM mic and FPGA are unused; they are possible future work, not part
 of this port.
+
+## What Plan A settled, and what it left for the later plans
+
+Plan A is implemented, reviewed and hardware-verified. Recorded here because
+these were triaged during its final review and would otherwise be lost with the
+scratch workspace.
+
+**Resolved during Plan A, with the measured values the later plans inherit:**
+
+- **RAM baseline: 152,188 B of 264 KB** (~58 %) for `wilidoro_display`, with
+  LVGL's 64 KB heap and two 320×40 partial buffers. Three themes were budgeted
+  against this; `LV_MEM_SIZE` is the knob if OG-C overruns it.
+- **No RGB565 byte swap on the OG.** `st7789_blit()` converts to big-endian
+  itself. Confirmed empirically — the digits render warm orange, not blue.
+- **`hal_backlight()` takes percent; `board_backlight()` takes 0–255 duty.**
+  The OG HAL scales. Anything that touches brightness must keep that straight.
+- **Theme geometry is derived, not literal.** `src/ui/ui.h` carries the
+  per-board block and `theme_neon.c` derives its arc from `UI_FACE_H`
+  (`UI_FACE_H - 66`: 220 px on FW2, unchanged; 146 px on the OG, which fits).
+  OG-C must follow this pattern rather than copying literals.
+
+**Carried into Plan OG-B (LEDs, audio, tilt):**
+
+- **Call `ws2812_init()`.** Until something does, `fwog_power_poll()` silently
+  skips painting the red-hold shutdown countdown, because it only draws
+  `if (ws2812_ready())`. The power-off itself works without it.
+- **`hal_power_armed()` is already wired** into `app.c`'s LED write path and
+  becomes load-bearing the moment the LEDs are real: it keeps the app off the
+  bar while the BSP is drawing that countdown.
+- **Harden `tools/flash_og.ps1` first.** `fw.py bootsel` samples the port list
+  once, so the script cannot flash a board whose main app is resetting — which
+  is exactly when you need it. It cost eight failed attempts during Plan A.
+- The **LIS3DH axis orientation** remains a bench-measured constant and still
+  blocks tilt-to-pause.
+
+**Carried into Plan OG-C (themes, screens, simulator):**
+
+- **Softkey label fit at 320×240 is unverified.** Buttons are
+  `UI_SOFTKEY_BTN_W` = 60 px wide with a 16 px font; "Dismiss" is around 60 px
+  and may clip. Check it when Settings and Nearby arrive.
+- **`hal_caps()` has no consumer on the OG** — `screen_settings.c` is its only
+  reader and is compiled out. Either OG-C builds a capability surface or this
+  design should stop implying one exists.
