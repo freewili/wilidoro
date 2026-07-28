@@ -555,6 +555,21 @@ bootloader's stale UI frozen on the panel the whole time. Nothing in the
 console output would have told you the panel was never actually written to;
 only looking at the panel itself would.
 
+**3. Software power-off is only observable on battery.** Confirmed on
+hardware: holding red for ~6 s runs `fwog_ship_enter()` and the board powers
+down **when running on battery**, and a grey hold wakes it again. With USB
+attached it will not appear to stay off — a USB attach re-enables the
+charger's FET, which is exactly the documented wake path. Test this on battery
+or you will conclude a working power-off is broken.
+
+Note also that in this plan the red-hold **countdown on the LED bar is
+invisible**, and that is expected rather than a fault: `fwog_power_poll()`
+paints it only `if (ws2812_ready())`, and nothing in Plan A calls
+`ws2812_init()`. Plan OG-B, which turns the LEDs on, is where the countdown
+starts appearing — and is also where `hal_power_armed()`'s guard in
+`src/app/app.c` starts doing real work, by keeping the app's own LED writes
+off the bar while the BSP is drawing that countdown.
+
 ---
 
 **Why this note isn't in the BSP:** `wilibsp/` is a git submodule
