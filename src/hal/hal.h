@@ -19,7 +19,8 @@ typedef enum {
 } hal_btn_t;
 bool hal_next_button(hal_btn_t *out);  /* dequeue next press edge; false if none */
 
-/* 16 LEDs (index 0..15). */
+/* LEDs. Count is board-dependent: 16 on FreeWili 2, 7 on the OG. */
+int  hal_led_count(void);
 void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b);
 void hal_led_brightness(uint8_t level);   /* 0..255 */
 void hal_led_show(void);

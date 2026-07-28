@@ -56,6 +56,7 @@ bool hal_next_button(hal_btn_t *out) {
 
 /* LEDs — store state; a visible on-screen strip is a Plan C nicety, so keep it minimal here. */
 static uint8_t s_led_bri = 40;
+int hal_led_count(void) { return 16; }
 void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b) { (void)i;(void)r;(void)g;(void)b; }
 void hal_led_brightness(uint8_t level) { s_led_bri = level; }
 void hal_led_show(void) { (void)s_led_bri; }

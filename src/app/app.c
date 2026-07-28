@@ -215,9 +215,10 @@ static void tick_cb(lv_timer_t *t) {
             dvi_view_render(s_app.settings.theme, &lv, &vs);
         }
     }
-    led_rgb_t leds[LED_COUNT];
-    led_pattern_render(s_app.settings.theme, &lv, leds);
-    for (int i = 0; i < LED_COUNT; i++) hal_led_set(i, leds[i].r, leds[i].g, leds[i].b);
+    led_rgb_t leds[LED_COUNT_MAX];
+    const int nled = hal_led_count();
+    led_pattern_render(s_app.settings.theme, &lv, leds, nled);
+    for (int i = 0; i < nled; i++) hal_led_set(i, leds[i].r, leds[i].g, leds[i].b);
     hal_led_show();
 
     /* refresh the active screen */
