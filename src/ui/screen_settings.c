@@ -129,6 +129,13 @@ static lv_obj_t *add_row(const char *name, int which) {
    add_row() set up -- overwriting border_side with LEFT alone would have
    silently dropped that divider, so BOTTOM stays OR'd in throughout. */
 static void select_row(int idx) {
+    /* Defensive only: every board today calls add_row() unconditionally 7
+       times, so s_row_count is never 0 by the time this runs. But nothing
+       stops a future conditionally-compiled row (e.g. Beacon, gated on
+       hal_caps().radio) from being the LAST row left standing on some
+       future board variant with none at all -- without this, idx wrapping
+       to s_row_count-1 below would be -1, indexing s_row_obj[-1]. */
+    if (s_row_count <= 0) return;
     /* Wrap on s_row_count, the number of rows actually filled in, NOT
        N_SET_ROWS -- add_row() (above) deliberately tolerates under-filling
        (`if (s_row_count < N_SET_ROWS)`), which makes N_SET_ROWS a capacity,

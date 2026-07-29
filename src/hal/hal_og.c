@@ -317,15 +317,19 @@ bool hal_imu(float *ax, float *ay, float *az) {
        lis3dh_process()) has THREE outcomes, not the two an
        `if (!ok) return false;` idiom assumes:
          1. false             -- an I2C read failed this call.
-         2. true, no new data -- STATUS's ZYXDA bit was clear. This is
-            routine, not exceptional: this HAL polls at the ~2 ms main-loop
-            cadence, well under the sensor's 10 ms (100 Hz) sample period --
-            or, permanently, if lis3dh_configure() failed to write
-            CTRL_REG1/CTRL_REG4 (s_imu_ok false, see hal_init()) the part
-            never leaves its power-on power-down default and ZYXDA never
-            sets, for the life of the boot. Either way out_sample/out_motion
-            are left EXACTLY as the caller passed them in -- documented
-            BSP behaviour, not an omission.
+         2. true, no new data -- STATUS's ZYXDA bit was clear. In practice
+            this is RARE, not routine: hal_imu() is not on hal_pump()'s
+            ~2 ms main-loop cadence at all -- its only caller is sensor_cb()
+            in src/app/app.c (~:104), on a 100 ms lv_timer (app.c:98,284),
+            ten times SLOWER than the sensor's 10 ms (100 Hz) output, so a
+            fresh sample is essentially always waiting by the time this
+            polls. The outcome that IS routine is the permanent one: if
+            lis3dh_configure() failed to write CTRL_REG1/CTRL_REG4
+            (s_imu_ok false, see hal_init()) the part never leaves its
+            power-on power-down default and ZYXDA never sets, for the life
+            of the boot. Either way out_sample/out_motion are left EXACTLY
+            as the caller passed them in -- documented BSP behaviour, not
+            an omission.
          3. true, new data    -- out_sample holds a fresh reading.
        Declaring `lis3dh_sample_t s;` uninitialized and treating any `true`
        as "sample valid" (the bug this replaces) converts whatever garbage
@@ -337,19 +341,35 @@ bool hal_imu(float *ax, float *ay, float *az) {
        outcome 2's "leave untouched" contract calls for: on a "no new data"
        poll, `s` comes back holding the last real reading, not garbage. And
        refusing to report anything until a real sample has actually been
-       seen (s_last_valid) closes both the brief startup window before the
-       first ZYXDA-set poll and the permanent stuck-in-power-down case. */
+       seen (s_last_valid) closes both the startup window before the first
+       ZYXDA-set poll -- at this HAL's 100 ms polling cadence (see outcome 2
+       above) that window is effectively zero -- and the permanent
+       stuck-in-power-down case, which is not. */
     lis3dh_sample_t s = s_last_sample;
     lis3dh_motion_t m;
     if (!lis3dh_process(LIS3DH_MOVE_THRESHOLD_DEFAULT, &s, &m)) {
-        s_last_valid = false;   /* an I2C glitch invalidates the seed too */
+        /* Only clears "have we ever seen a genuine sample" -- it does NOT
+           invalidate s_last_sample. lis3dh_process() zeroes its own `s`
+           local on this path (the BSP's documented read-failure semantics,
+           lis3dh.h), but it never touches our static, so s_last_sample
+           keeps whatever real reading it held before the glitch. If a
+           sample had already arrived, the very next successful poll
+           reseeds from that (nonzero) pre-glitch value and republishes it
+           as valid -- a stale but real orientation, exactly like the
+           ordinary no-new-data path below. This flag only matters
+           pre-first-sample, where it correctly keeps hal_imu() returning
+           false until a genuine reading arrives. */
+        s_last_valid = false;
         return false;
     }
     /* Zero-initialized statics make the pre-first-sample seed (0,0,0);
        gravity alone puts a real reading nowhere near that on every axis at
-       once (>=1 g on some axis, i.e. >=256 raw LSB at 4 mg/digit -- see
-       lis3dh_raw_to_mg()), so "still exactly (0,0,0) and never yet valid"
-       can only mean no genuine sample has arrived, never a real reading. */
+       once. Worst case is a corner orientation (gravity split evenly
+       across x/y/z): each axis still reads ~1/sqrt(3) g =~ 0.577 g, i.e.
+       ~144 digits at 4 mg/digit -- ~9200 raw LSB once left-justified
+       (digit << 6; see lis3dh_raw_to_mg()), not the digit count itself.
+       So "still exactly (0,0,0) and never yet valid" can only mean no
+       genuine sample has arrived, never a real reading. */
     if (!s_last_valid && s.x == 0 && s.y == 0 && s.z == 0) return false;
     s_last_sample = s;
     s_last_valid = true;

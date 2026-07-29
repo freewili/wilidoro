@@ -274,7 +274,11 @@ flag and no way for the two modes to be live at once.
 
 1. **The flash dance.** `fw flash wilidoro_display` takes the display CPU off
    USB. Most expensive mistake available; must be blocked in tooling.
-2. **LIS3DH axis orientation** — bench-measured; blocks tilt-to-pause.
+2. **LIS3DH axis orientation** — bench-measured and resolved; tilt-to-pause
+   is implemented and hardware-confirmed (`docs/hardware-notes.md`). No
+   longer a risk, though `hal_caps().imu` is a runtime result of
+   `lis3dh_configure()`, so the sensor is not asserted unconditionally
+   present.
 3. **LVGL heap sizing** — measure before building three themes on top of it.
 4. **8 kHz chimes** may sound worse than FW2. Acceptable; retune if so.
 5. **Near-field self-test saturation** — degrade honestly, never false-pass.
@@ -285,7 +289,8 @@ flag and no way for the two modes to be live at once.
 2. Buttons + `FWOG_POWER_DEFAULT` power policy
 3. LEDs (7)
 4. Audio
-5. Tilt (needs board)
+5. Tilt (needs board) — done; hardware-confirmed 2026-07-29, see
+   `docs/hardware-notes.md`
 6. Remaining two themes
 7. Main-CPU app + beacon + over-the-air self-test
 
@@ -326,8 +331,11 @@ scratch workspace.
 - **Harden `tools/flash_og.ps1` first.** `fw.py bootsel` samples the port list
   once, so the script cannot flash a board whose main app is resetting — which
   is exactly when you need it. It cost eight failed attempts during Plan A.
-- The **LIS3DH axis orientation** remains a bench-measured constant and still
-  blocks tilt-to-pause.
+- (History, from when this was written: **LIS3DH axis orientation** was still
+  an open bench-measured constant blocking tilt-to-pause. It has since been
+  measured and confirmed on hardware — see `docs/hardware-notes.md` — and
+  tilt-to-pause is implemented, gated at runtime by `hal_caps().imu` rather
+  than assumed present.)
 
 **Carried into Plan OG-C (themes, screens, simulator):**
 

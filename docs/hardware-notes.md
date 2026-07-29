@@ -714,9 +714,14 @@ facing you and the sound is the only feedback you get. No chatter was reported
 at the threshold.*
 
 Plan OG-B (Task 4) wires the LIS3DH into `hal_imu()` in `src/hal/hal_og.c`.
-`lis3dh_init()`/`lis3dh_configure(LIS3DH_RANGE_2G)` run in
-`src/target_og/main.c` next to Tasks 1 and 3's `ws2812_init()` /
-`i2s_audio_init()`, and the heartbeat now reads
+`lis3dh_init()`/`lis3dh_configure(LIS3DH_RANGE_2G)` run in `hal_og.c`'s own
+`hal_init()` (`hal_og.c:101-102`), not in `src/target_og/main.c` next to
+Tasks 1 and 3's `ws2812_init()` / `i2s_audio_init()` as first planned --
+owning the call inside the HAL is what lets `hal_caps().imu` report
+`lis3dh_configure()`'s own success/failure instead of a value hardcoded
+`true` regardless of whether the part actually came up. `target_og/main.c`'s
+heartbeat now reads that same `hal_caps().imu` rather than keeping a second,
+HAL-external copy of it, and reads
 `alive (panel=%s leds=%s audio=%s imu=%s)`.
 
 **The plan's `LIS3DH_COUNTS_PER_G 16384.0f` is wrong and was not used.**
