@@ -110,18 +110,39 @@ static lv_obj_t *add_row(const char *name, int which) {
 }
 
 #if defined(WILIDORO_BOARD_OG)
-/* Move the selection to row `idx` (wrapping both directions), give it a
-   visible background (the other rows stay the transparent look add_row
-   already gives them), and scroll it into view so rows 5-8, which sit below
-   the fold on a 320x240 panel, become reachable. */
+/* Move the selection to row `idx` (wrapping both directions), give it an
+   unmistakable highlight, and scroll it into view so rows 5-8, which sit
+   below the fold on a 320x240 panel, become reachable.
+   UI_PANEL-on-UI_BG (the old background-only highlight) differs by only
+   ~1-3 LSBs after RGB565 quantisation on the physical panel -- confirmed
+   "really hard to see" on hardware. The highlight is now a filled
+   background plus a left accent bar, in the current theme's accent colour
+   (theme_get()->accent, the same source screen_settings_update() uses for
+   the title) so it tracks theme changes. The row's border_side gains
+   LV_BORDER_SIDE_LEFT alongside the existing LV_BORDER_SIDE_BOTTOM divider
+   add_row() set up -- overwriting border_side with LEFT alone would have
+   silently dropped that divider, so BOTTOM stays OR'd in throughout. */
 static void select_row(int idx) {
     if (idx < 0) idx = N_SET_ROWS - 1;
     else if (idx >= N_SET_ROWS) idx = 0;
-    lv_obj_set_style_bg_opa(s_row_obj[s_sel], LV_OPA_TRANSP, 0);
+
+    /* Clear the old row's selected treatment completely before reassigning
+       s_sel, so nothing accumulates as the selection moves down the list. */
+    lv_obj_t *old = s_row_obj[s_sel];
+    lv_obj_set_style_bg_opa(old, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_side(old, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_width(old, 1, 0);
+    lv_obj_set_style_border_color(old, lv_color_hex(UI_PANEL), 0);
+
     s_sel = idx;
-    lv_obj_set_style_bg_color(s_row_obj[s_sel], lv_color_hex(UI_PANEL), 0);
-    lv_obj_set_style_bg_opa(s_row_obj[s_sel], LV_OPA_COVER, 0);
-    lv_obj_scroll_to_view(s_row_obj[s_sel], LV_ANIM_OFF);
+    lv_obj_t *row = s_row_obj[s_sel];
+    uint32_t accent = theme_get(app()->settings.theme)->accent;
+    lv_obj_set_style_bg_color(row, lv_color_hex(UI_PANEL), 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM | LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_border_width(row, 3, 0);
+    lv_obj_set_style_border_color(row, lv_color_hex(accent), 0);
+    lv_obj_scroll_to_view(row, LV_ANIM_OFF);
 }
 #endif
 
@@ -169,7 +190,15 @@ lv_obj_t *screen_settings_create(void) {
 }
 
 void screen_settings_update(void) {
-    lv_obj_set_style_text_color(s_title, lv_color_hex(theme_get(app()->settings.theme)->accent), 0);
+    uint32_t accent = theme_get(app()->settings.theme)->accent;
+    lv_obj_set_style_text_color(s_title, lv_color_hex(accent), 0);
+#if defined(WILIDORO_BOARD_OG)
+    /* Keep the selected row's accent bar in sync if the theme changes while
+       that row (e.g. "Theme" itself) is selected -- select_row() only
+       stamps the accent at selection time, and this runs every frame while
+       Settings is on screen, same as the title above it. */
+    lv_obj_set_style_border_color(s_row_obj[s_sel], lv_color_hex(accent), 0);
+#endif
 }
 
 void screen_settings_softkey(int col) {

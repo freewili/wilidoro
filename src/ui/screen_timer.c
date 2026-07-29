@@ -37,8 +37,18 @@ lv_obj_t *screen_timer_create(void) {
 static void labels_for_state(const timer_view_t *v, const char *out[5]) {
     static const char *idle[5]  = {"Start", 0, 0, "Nearby", "Menu"};
     static const char *run[5]   = {"Pause", "Skip", "+5", "Nearby", "Menu"};
+#if defined(WILIDORO_BOARD_OG)
+    /* At UI_SOFTKEY_BTN_W=60px with a 16px font, "Resume" (67.0px) and
+       "Dismiss" (63.0px) clip symmetrically at both ends on the OG panel --
+       confirmed on hardware. Shorter synonyms that still describe what the
+       column 0 handler actually does (pomodoro_resume() / acknowledge()).
+       The FW2's 92px buttons don't clip, so it keeps the original words. */
+    static const char *paused[5]= {"Go",     "Skip", "+5", "Nearby", "Menu"};
+    static const char *alarm_l[5]={"Cancel",0,0,0,"Menu"};
+#else
     static const char *paused[5]= {"Resume","Skip", "+5", "Nearby", "Menu"};
     static const char *alarm_l[5]={"Dismiss",0,0,0,"Menu"};
+#endif
     const char **src = idle;
     if (v->alarm) src = alarm_l;
     else if (v->paused) src = paused;
