@@ -7,7 +7,16 @@
 #include "hal.h"
 #include "fwog_display.h"
 #include "pico/stdlib.h"
+#include "hardware/pio.h"
 #include "tone_synth.h"
+
+/* Must match i2s_audio_init(pio0, 2) in src/target_og/main.c -- see
+   audio_keep_silent() below for why this HAL needs to know the block/SM the
+   BSP claimed, not just call through i2s_audio.h's opaque API. */
+#define FWOG_I2S_PIO  pio0
+#define FWOG_I2S_SM   2u
+
+static void audio_keep_silent(void);   /* defined in the audio section below */
 
 #define BTN_QUEUE_LEN 8
 static hal_btn_t s_queue[BTN_QUEUE_LEN];
@@ -56,6 +65,7 @@ void hal_pump(void) {
     }
 
     i2s_audio_process();   /* feeds the A/B chain; starves and truncates without it */
+    audio_keep_silent();   /* fix round 1: the idle bus is audible without this */
 }
 
 uint32_t hal_now_ms(void) { return to_ms_since_boot(get_absolute_time()); }
@@ -105,6 +115,12 @@ void hal_led_show(void) {
    hence static, not a stack array. 3200 int16 is 6.4 KB. */
 static int16_t s_tone_buf[TONE_MAX_SAMPLES];
 
+/* A block of real silence, played on a loop whenever no note is sounding.
+   512 samples at 8 kHz is 64 ms, so hal_pump() re-arms it about 16 times a
+   second -- every sample is zero, so re-arming is inaudible. */
+#define SILENCE_SAMPLES 512u
+static const int16_t s_silence_buf[SILENCE_SAMPLES];   /* .rodata, all zero */
+
 void hal_tone(uint16_t hz, uint16_t ms, uint8_t amp) {
     if (ms == 0u) return;
     i2s_audio_stop();                       /* always stop before re-arming */
@@ -116,6 +132,58 @@ void hal_tone(uint16_t hz, uint16_t ms, uint8_t amp) {
 
 void hal_audio_idle(void) {
     i2s_audio_stop();
+}
+
+/* Fix round 1 -- board verification found the chime itself correct but
+   audible noise after it ends. Root cause, confirmed from
+   wiliOGbsp/bsp/display_cpu/audio/i2s_audio.h's "Trap 2": IC17 (MAX98357A)
+   has SD_MODE hard-pulled to 3V3 with no GPIO wired to it, so there is no
+   mute/shutdown line on this board -- "AN IDLE I2S BUS IS AN AUDIBLE STATE,
+   not an off state. Whatever the PIO shift register last held keeps looping
+   out at the bit clock rate for as long as the state machine runs, even with
+   no DMA feeding it." i2s_audio_stop()/the natural end-of-note path
+   (i2s_audio.c's stop_internal()) push exactly ONE best-effort zero word
+   before returning to idle -- the header calls that "BEST EFFORT, not a real
+   mute", not a guarantee. pio_sm_set_enabled() is never called with false
+   anywhere in that driver, so the state machine keeps running and keeps
+   shifting whatever is left in its pipeline once that one zero word has
+   gone through.
+   The fix belongs here, not in the read-only wiliOGbsp submodule: keep
+   topping up the SAME state machine's TX FIFO with zero words for as long
+   as i2s_audio_is_idle() reports true. FWOG_I2S_PIO/FWOG_I2S_SM are pio0/sm2
+   -- the exact block and SM i2s_audio_init(pio0, 2) claims in
+   src/target_og/main.c, not a guess. Guarded by pio_sm_is_tx_fifo_full() so
+   this never blocks, bounded to the FIFO's own depth so the loop cannot
+   spin, and gated on i2s_audio_is_idle() so it can never run while a real
+   DMA transfer is feeding the same FIFO -- interleaving zeros into that
+   would corrupt playback, not silence it. hal_pump() runs this every main-
+   loop iteration (~2 ms), including before the first tone ever plays, so the
+   bus is silenced from shortly after i2s_audio_init() at boot, not only
+   after the first note ends. */
+static void audio_keep_silent(void) {
+    if (!i2s_audio_is_idle()) return;
+    /* Re-arm the silence loop. Two earlier approaches were measured and
+       rejected on this board, both worth recording so neither is retried:
+
+       1. Topping up the PIO TX FIFO with zero words from here. It silences the
+          bus from boot, but cannot silence it after a note: the SM consumes
+          8000 words/s and this loop, running every ~2 ms, supplies about 2000.
+          Between top-ups the SM re-shifts whatever it last held -- zeros from
+          boot (silent), audio samples after a chime (noise). That asymmetry is
+          exactly what was observed on hardware.
+
+       2. Parking the SM (pio_sm_set_enabled false) while idle. That did kill
+          the noise completely, but the chime then played correctly only
+          sometimes: pio_sm_restart() resets the shift counters and clkdiv
+          phase but NOT the program counter, so a SM parked mid-frame resumes
+          mid-frame and the next note comes out misaligned. The driver owns the
+          program offset, so a clean re-entry point is not reachable from here.
+
+       Letting the DMA play real zeros keeps the SM running continuously, which
+       removes both problems at once -- no rate race, and no frame phase to get
+       wrong. It costs one 64 ms re-arm about 16 times a second and 16 KB/s of
+       DMA bandwidth. */
+    (void)i2s_audio_start(s_silence_buf, SILENCE_SAMPLES, true, false);
 }
 
 /* ---- Backlight: no light sensor on this board, so this is a fixed level ----

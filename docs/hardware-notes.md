@@ -616,7 +616,7 @@ finds it too bright or too dim, update `FWOG_LED_BRIGHT_DEFAULT` in
 `src/hal/hal_og.c` and record the chosen number and the ambient conditions it was
 judged under here, the same way the FW2 entry does.
 
-## FreeWili OG — chimes over I2S (not yet ear-confirmed)
+## FreeWili OG — chimes over I2S (ear-confirmed)
 
 Plan OG-B (Task 3) wires `tone_render()` (Task 2) into the OG's I2S block:
 `hal_tone()` in `src/hal/hal_og.c` renders one note into a `static` 3200-sample
@@ -627,11 +627,51 @@ main-loop iteration so the A/B buffer chain doesn't starve mid-note.
 `ws2812_init(pio0, 0)`, and the heartbeat now reads
 `alive (panel=%s leds=%s audio=%s)`.
 
-The value actually in effect today is **`TONE_PEAK_MAX = 12000`** in
-`src/app/tone_synth.h`, unchanged from what Task 2 landed. **Nobody has
-listened to this board's chimes yet** — the level and tone quality below are
-unverified, not confirmed. This entry records the starting point, not a
-judged choice.
+**`TONE_PEAK_MAX = 12000`** in `src/app/tone_synth.h`, unchanged from what
+Task 2 landed — and now **confirmed by ear on hardware**: the chimes sound
+good and the level needed no adjustment. No note in the shared tables was
+retuned.
+
+### The idle bus is audible, and silencing it took three attempts
+
+This is the part worth reading before touching the audio path. IC17
+(MAX98357A) has `SD_MODE` hard-pulled to 3V3 with **no GPIO wired to it**, so
+there is no mute line: the BSP's own `i2s_audio.h` "Trap 2" states that an
+idle I²S bus is an *audible* state, and `pio_sm_set_enabled()` is never called
+with `false` anywhere in that driver. The symptom, on first bring-up, was a
+correct-sounding chime followed by continuous noise.
+
+Two approaches were measured and **rejected**. Both are recorded in
+`src/hal/hal_og.c` so neither gets retried:
+
+1. **Topping up the PIO TX FIFO with zero words from `hal_pump()`.** Silenced
+   the bus from boot, but not after a note. The SM consumes 8000 words/s and
+   `hal_pump()`, running every ~2 ms, supplies about 2000 — so between top-ups
+   the SM re-shifts whatever it last held: zeros from boot (silent), audio
+   samples after a chime (noise). That asymmetry is exactly what was heard.
+2. **Parking the SM (`pio_sm_set_enabled(false)`) while idle.** Killed the
+   noise completely, but then the chime played correctly only *sometimes*:
+   `pio_sm_restart()` resets the shift counters and clkdiv phase but **not the
+   program counter**, so a SM parked mid-frame resumes mid-frame and the next
+   note comes out misaligned. The driver owns the program offset, so a clean
+   re-entry point is not reachable from application code.
+
+**What works: let the DMA play real zeros.** `hal_pump()` re-arms a 64 ms
+block of `const` zeros whenever `i2s_audio_is_idle()`. The SM runs
+continuously, which removes both problems at once — no rate race, and no frame
+phase to get wrong. Costs ~16 KB/s of DMA bandwidth and no RAM. Verified on
+hardware: silent at idle, silent after a chime, and every chime correct across
+repeated presses.
+
+**A hypothesis that was wrong, recorded so nobody re-runs it.** The noise was
+first blamed on `stop_internal()`'s bare `dma_channel_abort()` calls failing to
+break the driver's mutually-chained A↔B DMA — the same class of bug the
+FreeWili 2 hit in wilibsp (`849ec60`). It was measured and **refuted**: a
+diagnostic printing `dma_channel_is_busy()` across all 12 channels showed
+`dma_busy=0x000` throughout the noise, with `i2s_audio_is_idle()` true. The
+DMA stops correctly on this board. (The SDK's `dma_channel_cleanup()` does
+clear `CHAIN_TO` before aborting, and the re-trigger erratum it guards against
+is documented as RP2350-specific — this board is RP2040.)
 
 Two things are known from the render path itself rather than from listening:
 the OG's I2S output is fixed at 8 kHz (`TONE_RATE_HZ`), and `sound.c`'s shared
