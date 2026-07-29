@@ -15,7 +15,10 @@ static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beac
    LV_EVENT_CLICKED. Settings is instead driven from the five-button softkey
    bar (see screen_settings_softkey below), which needs the row objects and
    each row's `which` enum to move a selection and adjust it. */
-enum { N_SET_ROWS = 8 };
+/* No DVI row on this board (hal_caps().dvi is always false, hal_dvi_surface()
+   always returns false -- see hal_og.c) -- add_row("DVI output", ...) below is
+   compiled out on the OG, so this is 7 rows here, not 8. */
+enum { N_SET_ROWS = 7 };
 static lv_obj_t *s_row_obj[N_SET_ROWS];
 static int       s_row_which[N_SET_ROWS];
 static int       s_row_count = 0;
@@ -29,7 +32,10 @@ static void refresh_values(void) {
     snprintf(b,sizeof b,"%u min",s->long_min);  lv_label_set_text(s_val_long,b);
     snprintf(b,sizeof b,"%u%%",s->volume);      lv_label_set_text(s_val_vol,b);
     lv_label_set_text(s_val_beacon, s->beacon_on?"on":"off");
+#if !defined(WILIDORO_BOARD_OG)
+    /* No DVI row -> no s_val_dvi object on the OG; see add_row() below. */
     lv_label_set_text(s_val_dvi, s->dvi_on?"on":"off");
+#endif
     /* "no imu" rather than "off" when the BMI323 never came up, so a dead
        sensor is visible instead of a toggle that silently does nothing. */
     lv_label_set_text(s_val_tilt, hal_caps().imu ? (s->tilt_pause?"on":"off") : "no imu");
@@ -167,7 +173,14 @@ lv_obj_t *screen_settings_create(void) {
     s_val_vol    = add_row("Volume",       SET_VOL);
     s_val_beacon = add_row("Beacon",       SET_BEACON);
     s_val_theme  = add_row("Theme",        SET_THEME);
+#if !defined(WILIDORO_BOARD_OG)
+    /* The OG has no DVI hardware (hal_caps().dvi is false, hal_dvi_surface()
+       always returns false), so this row would read "DVI output: on" and let
+       the user "adjust" something with no effect. FW2 keeps it exactly as
+       before. Do not remove SET_DVI from the enum or app_dvi_apply() below --
+       the FW2 still uses both. */
     s_val_dvi    = add_row("DVI output",   SET_DVI);
+#endif
     s_val_tilt   = add_row("Tilt to pause", SET_TILT);
 
     s_bar = ui_softkey_bar(s_scr, screen_settings_softkey);

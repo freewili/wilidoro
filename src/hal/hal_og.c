@@ -8,6 +8,7 @@
 #include "fwog_display.h"
 #include "pico/stdlib.h"
 #include "tone_synth.h"
+#include "power/ship_mode.h"   /* FWOG_SHIP_HOLD_MS, for FWOG_POWER_BAR_DELAY_MS's threshold */
 
 static void audio_keep_silent(void);   /* defined in the audio section below */
 
@@ -27,6 +28,41 @@ static bool      s_power_armed;
    comment rather than by reference. Unlike the FW2, this is a fixed cap, not
    a bright-room maximum that auto-dim can scale lower -- see hardware-notes.md. */
 #define FWOG_LED_BRIGHT_DEFAULT 40u
+
+/* UX delay before the shutdown countdown is allowed to take over the LED bar.
+ * fwog_power_poll() (wiliOGbsp, read-only) starts painting the moment red
+ * goes down, which board feedback called too eager -- the ask is nothing
+ * visible until the hold has been sustained for a full 2 s. wiliOGbsp cannot
+ * be changed to add that delay itself, so it is applied here, on our side of
+ * the hal_power_armed() seam: hal_pump() below only lets s_power_armed go
+ * true once fwog_power_t.progress (0..100 over FWOG_SHIP_HOLD_MS) has passed
+ * this threshold. Below the threshold s_power_armed stays false, so app.c's
+ * `if (!hal_power_armed())` block (called from tick_cb, an LVGL timer on a
+ * 200 ms period -- see app_init()) keeps repainting the app's own LED pattern
+ * unconditionally, not just when it changes, and hal_pump() (called every
+ * raw main-loop iteration, well under 200 ms) runs before that repaint in
+ * the same loop -- see src/target_og/main.c / src/sim/main.c -- so the app's
+ * colours are the last thing written on any iteration where both happen to
+ * run together. This is a mitigation, not an airtight guarantee: BSP's own
+ * ship_render() also writes straight to the WS2812 driver, on its own 50 ms
+ * cadence starting immediately at press (FWOG_SHIP_RENDER_MS in
+ * wiliOGbsp/bsp/display_cpu/power/power_poll.c), independent of this
+ * threshold -- so between the app's 200 ms repaints a low-progress BSP frame
+ * can still reach the physical strip and be visible for up to ~200 ms before
+ * the app's next tick overwrites it. */
+#define FWOG_POWER_BAR_DELAY_MS 2000u
+
+/* progress/100 of the hold time must reach FWOG_POWER_BAR_DELAY_MS before the
+ * countdown is allowed to show. Rearranged to avoid both integer division
+ * (progress is coarse: only 0..100) and floating point (none allowed here):
+ *   progress/100 * FWOG_SHIP_HOLD_MS >= FWOG_POWER_BAR_DELAY_MS
+ *   progress * FWOG_SHIP_HOLD_MS     >= FWOG_POWER_BAR_DELAY_MS * 100
+ * Both sides fit comfortably in uint32_t: progress<=100, FWOG_SHIP_HOLD_MS is
+ * 6000, so the left side maxes out at 600000; the right side is a compile-time
+ * constant, 200000. */
+static bool power_bar_delay_elapsed(unsigned progress) {
+    return (uint32_t)progress * FWOG_SHIP_HOLD_MS >= FWOG_POWER_BAR_DELAY_MS * 100u;
+}
 
 static void queue_push(hal_btn_t b) {
     uint8_t next = (uint8_t)((s_head + 1u) % BTN_QUEUE_LEN);
@@ -49,7 +85,10 @@ void hal_init(void) {
    ship-mode hold machine, which depends on that debounce state. */
 void hal_pump(void) {
     const fwog_power_t p = fwog_power_poll(hal_now_ms());
-    s_power_armed = p.armed;
+    /* p.armed goes true the instant red is pressed; delay handing the LED bar
+       to the BSP until the hold has cleared FWOG_POWER_BAR_DELAY_MS, per the
+       comment on that constant above. */
+    s_power_armed = p.armed && power_bar_delay_elapsed(p.progress);
 
     /* fwog_btn_id_t is GRAY,YELLOW,GREEN,BLUE,RED == 0..4, and hal_btn_t is
        GREY,YELLOW,GREEN,BLUE,RED == 0..4. Same order, same colours. */

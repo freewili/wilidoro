@@ -62,11 +62,73 @@ TEST paused_is_dimmer_than_running(void) {
 
 TEST og_seven_fills_proportional(void) {
     led_rgb_t o[LED_COUNT_MAX];
-    /* 50% elapsed: total=1000ms, rem=500ms -> elapsed*7/1000 = 3.5, truncates
-       to 3 of 7 lit. */
+    /* 50% elapsed: total=1000ms, rem=500ms -> the bar sits at 3.5 of 7 LEDs.
+       LEDs 0-2 are now fully lit AND LED 3 is lit at partial (~50%)
+       intensity instead of staying dark -- the whole point of the smooth
+       scaling change -- so 4 pixels read non-zero, not 3. */
     timer_view_t v = V(false,false,false,false, 1000, 500);
     led_pattern_render(0, &v, o, 7);
-    ASSERT_EQ(3, lit_count(o, 7));
+    ASSERT_EQ(4, lit_count(o, 7));
+    PASS();
+}
+
+/* ---- Smooth (fractional) leading-LED intensity ---- */
+
+TEST leading_led_scales_with_fraction_seven(void) {
+    led_rgb_t o[LED_COUNT_MAX];
+    /* 3.5 of 7 LEDs: 0-2 full, 3 partial (~50%), 4-6 off. */
+    timer_view_t v = V(false,false,false,false, 1000, 500);
+    led_pattern_render(0, &v, o, 7);
+    ASSERT(o[0].r == o[1].r && o[1].r == o[2].r);   /* behind the edge: full, equal */
+    ASSERT(o[0].r > 0);
+    ASSERT(o[3].r > 0 && o[3].r < o[0].r);          /* leading edge: dim, not off, not full */
+    for (int i = 4; i < 7; i++) {
+        ASSERT_EQ(0, o[i].r); ASSERT_EQ(0, o[i].g); ASSERT_EQ(0, o[i].b);
+    }
+    PASS();
+}
+
+TEST leading_led_scales_with_fraction_sixteen(void) {
+    led_rgb_t o[LED_COUNT_MAX];
+    /* total=1000, rem=469 -> elapsed=531/1000 -> 531*16/1000 = 8.496 LEDs:
+       0-7 full, 8 partial (~49.6%), 9-15 off. */
+    timer_view_t v = V(false,false,false,false, 1000, 469);
+    led_pattern_render(0, &v, o, 16);
+    for (int i = 1; i < 8; i++) ASSERT_EQ(o[0].r, o[i].r);   /* behind the edge: full, equal */
+    ASSERT(o[0].r > 0);
+    ASSERT(o[8].r > 0 && o[8].r < o[0].r);                   /* leading edge: dim, not off/full */
+    for (int i = 9; i < 16; i++) {
+        ASSERT_EQ(0, o[i].r); ASSERT_EQ(0, o[i].g); ASSERT_EQ(0, o[i].b);
+    }
+    PASS();
+}
+
+TEST zero_percent_lights_nothing_no_partial(void) {
+    led_rgb_t o[LED_COUNT_MAX];
+    /* rem == total -> 0% elapsed. Not idle, so this exercises the progress
+       path itself rather than the early idle return -- no partial pixel
+       must appear at this endpoint either. */
+    timer_view_t v16 = V(false,false,false,false, 1000, 1000);
+    led_pattern_render(0, &v16, o, 16);
+    ASSERT_EQ(0, lit_count(o, 16));
+    timer_view_t v7 = V(false,false,false,false, 1000, 1000);
+    led_pattern_render(0, &v7, o, 7);
+    ASSERT_EQ(0, lit_count(o, 7));
+    PASS();
+}
+
+TEST hundred_percent_lights_all_full_no_half_lit(void) {
+    led_rgb_t o[LED_COUNT_MAX];
+    /* rem == 0 -> 100% elapsed. Every LED must be at full, equal intensity;
+       none dimmed as a "leading" pixel at this endpoint. */
+    timer_view_t v16 = V(false,false,false,false, 1000, 0);
+    led_pattern_render(0, &v16, o, 16);
+    ASSERT(o[0].r > 0);
+    for (int i = 1; i < 16; i++) ASSERT_EQ(o[0].r, o[i].r);
+    timer_view_t v7 = V(false,false,false,false, 1000, 0);
+    led_pattern_render(0, &v7, o, 7);
+    ASSERT(o[0].r > 0);
+    for (int i = 1; i < 7; i++) ASSERT_EQ(o[0].r, o[i].r);
     PASS();
 }
 
@@ -99,6 +161,10 @@ int main(int argc, char **argv) {
     RUN_TEST(alarm_lights_all);
     RUN_TEST(paused_is_dimmer_than_running);
     RUN_TEST(og_seven_fills_proportional);
+    RUN_TEST(leading_led_scales_with_fraction_seven);
+    RUN_TEST(leading_led_scales_with_fraction_sixteen);
+    RUN_TEST(zero_percent_lights_nothing_no_partial);
+    RUN_TEST(hundred_percent_lights_all_full_no_half_lit);
     RUN_TEST(og_seven_alarm_lights_all_seven);
     RUN_TEST(og_seven_does_not_touch_slack);
     GREATEST_MAIN_END();
