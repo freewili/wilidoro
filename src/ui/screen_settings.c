@@ -246,8 +246,7 @@ void screen_settings_softkey(int col) {
         case 0: select_row(s_sel - 1); break;                  /* grey: Up */
         case 1: apply_adjust(s_row_which[s_sel], -1); break;   /* yellow: Left */
         case 2: {                                               /* green: OK */
-            pm_config_t c = { a->settings.focus_min, a->settings.short_min, a->settings.long_min, a->settings.long_every };
-            if (a->pomo.state == PM_IDLE) pomodoro_init(&a->pomo, c); /* apply only when idle to avoid mid-session surprise */
+            if (a->pomo.state == PM_IDLE) app_apply_settings_to_pomo(); /* apply only when idle to avoid mid-session surprise */
             app_goto(SCREEN_TIMER);
             break;
         }
@@ -259,8 +258,7 @@ void screen_settings_softkey(int col) {
     if (col==0) { app_goto(SCREEN_TIMER); }
     else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); screen_timer_apply_theme(); app_dvi_apply(); app_tilt_apply(); }
     else if (col==4) {
-        pm_config_t c = { a->settings.focus_min, a->settings.short_min, a->settings.long_min, a->settings.long_every };
-        if (a->pomo.state == PM_IDLE) pomodoro_init(&a->pomo, c); /* apply only when idle to avoid mid-session surprise */
+        if (a->pomo.state == PM_IDLE) app_apply_settings_to_pomo(); /* apply only when idle to avoid mid-session surprise */
         app_goto(SCREEN_TIMER);
     }
 #endif

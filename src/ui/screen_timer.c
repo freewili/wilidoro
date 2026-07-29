@@ -79,14 +79,14 @@ void screen_timer_softkey(int col) {
             break;
         case PM_PAUSED:
             if (col==0) pomodoro_resume(&a->pomo, now);
-            else if (col==1) pomodoro_skip(&a->pomo, now);
+            else if (col==1) { pomodoro_skip(&a->pomo, now); app_apply_settings_to_pomo(); }
             else if (col==2) pomodoro_add5(&a->pomo, now);
             else if (col==3) app_goto(SCREEN_NEARBY);
             else if (col==4) app_goto(SCREEN_SETTINGS);
             break;
         default:
             if (col==0) pomodoro_pause(&a->pomo, now);
-            else if (col==1) pomodoro_skip(&a->pomo, now);
+            else if (col==1) { pomodoro_skip(&a->pomo, now); app_apply_settings_to_pomo(); }
             else if (col==2) pomodoro_add5(&a->pomo, now);
             else if (col==3) app_goto(SCREEN_NEARBY);
             else if (col==4) app_goto(SCREEN_SETTINGS);

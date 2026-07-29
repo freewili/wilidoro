@@ -90,6 +90,72 @@ TEST skip_focus_breaks_streak_and_idles(void) {
     PASS();
 }
 
+/* --- pomodoro_set_config -------------------------------------------------
+   Settings can change while a session is running; the "apply only when idle"
+   rule lives in the UI layer (screen_settings.c), not here. This setter's job
+   is narrower: update p->cfg and touch nothing else -- not state, not stats,
+   not the running phase's deadline. That last part is what keeps "no
+   mid-session surprise" true even after a config change lands while a phase
+   is in flight (e.g. Skip landing in PM_IDLE right after adopting it). */
+
+TEST set_config_updates_cfg_fields(void) {
+    pomodoro_t p; pomodoro_init(&p, CFG);
+    pm_config_t nc = { .focus_min = 50, .short_min = 10, .long_min = 20, .long_every = 3 };
+    pomodoro_set_config(&p, nc);
+    ASSERT_EQ(50, p.cfg.focus_min);
+    ASSERT_EQ(10, p.cfg.short_min);
+    ASSERT_EQ(20, p.cfg.long_min);
+    ASSERT_EQ(3,  p.cfg.long_every);
+    PASS();
+}
+
+TEST set_config_preserves_stats_and_focus_count(void) {
+    pomodoro_t p; pomodoro_init(&p, CFG);
+    pomodoro_start_focus(&p, 0);
+    pomodoro_tick(&p, MIN(25));               // completed=1, streak=1, focus_seconds set, focus_count=1
+    ASSERT_EQ(1, p.stats.completed);
+    ASSERT_EQ(1, p.stats.streak);
+    ASSERT_EQ(MIN(25) / 1000u, p.stats.focus_seconds);
+    ASSERT_EQ(1, p.focus_count);
+
+    pm_config_t nc = { .focus_min = 50, .short_min = 10, .long_min = 20, .long_every = 3 };
+    pomodoro_set_config(&p, nc);
+
+    ASSERT_EQ(1, p.stats.completed);
+    ASSERT_EQ(1, p.stats.streak);
+    ASSERT_EQ(MIN(25) / 1000u, p.stats.focus_seconds);
+    ASSERT_EQ(1, p.focus_count);
+    PASS();
+}
+
+TEST set_config_while_idle_does_not_start_and_next_start_uses_new_focus_min(void) {
+    pomodoro_t p; pomodoro_init(&p, CFG);
+    pm_config_t nc = { .focus_min = 50, .short_min = 10, .long_min = 20, .long_every = 3 };
+    pomodoro_set_config(&p, nc);
+    ASSERT_EQ(PM_IDLE, p.state);              // did not start anything
+
+    pomodoro_start_focus(&p, 0);
+    ASSERT_EQ(PM_FOCUS, p.state);
+    ASSERT_EQ(MIN(50), pomodoro_remaining_ms(&p, 0));   // new focus_min took effect
+    PASS();
+}
+
+TEST set_config_mid_focus_does_not_move_running_deadline(void) {
+    pomodoro_t p; pomodoro_init(&p, CFG);
+    pomodoro_start_focus(&p, 0);
+    ASSERT_EQ(MIN(25), pomodoro_remaining_ms(&p, 0));
+
+    pm_config_t nc = { .focus_min = 50, .short_min = 10, .long_min = 20, .long_every = 3 };
+    pomodoro_set_config(&p, nc);
+
+    ASSERT_EQ(PM_FOCUS, p.state);
+    /* Deadline untouched: the phase keeps the duration it started with,
+       even though p.cfg.focus_min now reads 50. */
+    ASSERT_EQ(MIN(25), pomodoro_remaining_ms(&p, 0));
+    ASSERT_EQ(50, p.cfg.focus_min);
+    PASS();
+}
+
 /* --- 49-day rollover ---------------------------------------------------------
    hal_now_ms() is a uint32_t millisecond counter, so it wraps every ~49.7 days.
    A phase started shortly before the wrap has a phase_end_ms that wraps with it,
@@ -162,6 +228,10 @@ int main(int argc, char **argv) {
     RUN_TEST(pause_resume_preserves_remaining);
     RUN_TEST(add5_extends_phase);
     RUN_TEST(skip_focus_breaks_streak_and_idles);
+    RUN_TEST(set_config_updates_cfg_fields);
+    RUN_TEST(set_config_preserves_stats_and_focus_count);
+    RUN_TEST(set_config_while_idle_does_not_start_and_next_start_uses_new_focus_min);
+    RUN_TEST(set_config_mid_focus_does_not_move_running_deadline);
     RUN_TEST(focus_survives_the_uint32_rollover);
     RUN_TEST(break_survives_the_uint32_rollover);
     RUN_TEST(resume_survives_the_uint32_rollover);

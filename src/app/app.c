@@ -86,6 +86,16 @@ void app_dvi_apply(void) {
    the toggle flips and when the Default softkey rewrites the settings struct. */
 void app_tilt_apply(void) { tilt_init(&s_tilt); }
 
+/* The single place a pm_config_t is built from app()->settings; both the
+   settings-save path and Skip's pending-config adoption call through here so
+   the field list never has to be kept in sync in two places. */
+void app_apply_settings_to_pomo(void) {
+    app_settings_t *s = &s_app.settings;
+    pm_config_t cfg = { .focus_min = s->focus_min, .short_min = s->short_min,
+                        .long_min = s->long_min, .long_every = s->long_every };
+    pomodoro_set_config(&s_app.pomo, cfg);
+}
+
 static void route_softkey(int col) {
     app_sound(SND_BLIP);
     switch (s_app.screen) {

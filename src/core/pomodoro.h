@@ -21,6 +21,11 @@ typedef struct {
 } pomodoro_t;
 
 void       pomodoro_init(pomodoro_t *p, pm_config_t cfg);
+/* Updates p->cfg only -- state, phase_end_ms, focus_count and stats are left
+   exactly as they are. A running phase keeps the duration it started with
+   (no mid-session surprise); the new config takes effect on the next call
+   that reads it, e.g. pomodoro_start_focus() after landing in PM_IDLE. */
+void       pomodoro_set_config(pomodoro_t *p, pm_config_t cfg);
 void       pomodoro_start_focus(pomodoro_t *p, uint32_t now_ms);
 void       pomodoro_pause(pomodoro_t *p, uint32_t now_ms);
 void       pomodoro_resume(pomodoro_t *p, uint32_t now_ms);

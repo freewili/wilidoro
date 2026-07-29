@@ -25,4 +25,9 @@ void   app_sound(sound_id_t id);
 void   app_sound_stop(void);
 void   app_dvi_apply(void);          /* re-apply settings.dvi_on to the hardware */
 void   app_tilt_apply(void);         /* re-prime the tilt gate after tilt_pause changes */
+/* Pushes app()->settings' timing fields into pomo.cfg via pomodoro_set_config()
+   -- the one place a pm_config_t is built from app_settings_t. Safe to call
+   any time: it never touches state, phase_end_ms or stats, so callers still
+   own their own "when is it safe to call this" rule (e.g. idle-only). */
+void   app_apply_settings_to_pomo(void);
 #endif

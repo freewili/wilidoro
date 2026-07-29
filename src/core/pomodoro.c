@@ -7,6 +7,10 @@ void pomodoro_init(pomodoro_t *p, pm_config_t cfg) {
     p->state = PM_IDLE;
 }
 
+void pomodoro_set_config(pomodoro_t *p, pm_config_t cfg) {
+    p->cfg = cfg;
+}
+
 void pomodoro_start_focus(pomodoro_t *p, uint32_t now_ms) {
     p->state = PM_FOCUS;
     p->phase_end_ms = now_ms + (uint32_t)p->cfg.focus_min * 60000u;
