@@ -1,8 +1,12 @@
 # Wilidoro OG-D — the sub-GHz beacon
 
 **Date:** 2026-07-29
-**Status:** Designed, not built. This is the last planned piece of the OG port;
-Plans OG-A, OG-B and OG-C are merged on `main`.
+**Status:** Built, and **partly hardware-verified**. The radio half is proven on
+a board: the over-the-air self-test passes at RSSI −46 dBm / LQI 0, and
+`caps.radio` correctly goes false within 12 s of the main CPU disappearing.
+What has **not** been seen is anything on the panel — Nearby's contents, the
+`Self` softkey, and the Settings beacon toggle are all still unobserved. See
+`docs/hardware-notes.md`, "What the board actually said".
 
 Give the FreeWili OG a working focus beacon: transmit our pomodoro state over
 the CC1101, hear other devices doing the same, and populate the Nearby screen
@@ -408,14 +412,20 @@ existing FW2 one, in the same format.
 
 ## Risks, ranked
 
-1. **Fixed-length packet mode is a departure from the proven configuration.**
-   `bench_main` proved variable-length (it reads `buf[0]` as the count) on this
-   board; this plan uses fixed 16-byte length, per the og-port design. The
-   registers involved (`PKTCTRL0.LENGTH_CONFIG`, `PKTLEN`) are well-trodden and
-   the change is small, but it is the one place this plan knowingly leaves the
-   measured path. **Fallback:** if fixed length misbehaves, switch to
-   variable-length with a leading `0x10` byte, which is byte-for-byte the
-   configuration already known to work.
+1. ~~**Fixed-length packet mode is a departure from the proven configuration.**~~
+   **CONFIRMED AND FIXED on hardware, 2026-07-29 — this risk fired.**
+
+   Fixed length is not merely a departure, it is *incompatible with the driver*:
+   `cc1101_send_packet()` unconditionally writes a length byte into the TX FIFO
+   before the payload (`cc1101.c:709`), with no way to suppress it. In
+   fixed-length mode with `PKTLEN=16` the radio transmits `[0x10, wire[0..14]]`
+   and drops `wire[15]`; the hardware CRC passes because the frame is
+   self-consistent, so it presents as `crc=1` together with "payload wrong".
+
+   Now variable-length. **The fallback originally written here was itself
+   wrong** — it said to transmit a 17-byte buffer with a manual `0x10` prefix,
+   which would have prepended the length byte twice. The send call needs no
+   change at all; only the receive offsets do. See `docs/hardware-notes.md`.
 2. **`0x42` liveness could flap.** A 15 s window against a 5 s cadence tolerates
    two consecutive losses. If the link proves lossier than the BSP's measurement
    suggests, `caps.radio` would oscillate and Settings would flicker. Cheap to

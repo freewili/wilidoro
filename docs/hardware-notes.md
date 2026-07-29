@@ -890,8 +890,10 @@ notes like the ones in this file, but bugs get fixed upstream as a matter of cou
 
 ## FreeWili OG — the sub-GHz beacon (Plan OG-D)
 
-Built 2026-07-29. **Status: not yet run on a board.** Every claim in the
-checklist below is a thing to check, not a thing checked.
+Built 2026-07-29 and **partly hardware-verified the same day.** Checklist items
+1-3 below PASS on a real board. Items 4-8 need a human looking at the panel and
+have **not** been done. See "What the board actually said" for the numbers and
+for the two defects the board found.
 
 Design: `docs/superpowers/specs/2026-07-29-wilidoro-OG-D-beacon-design.md`.
 
@@ -953,49 +955,97 @@ clipping issue recorded above at exact numbers:
 Flash with `powershell -File tools/flash_og.ps1`. Never `fw flash
 wilidoro_display`.
 
-1. **The main console reports the self-test.** One line at boot:
-   `[wilidoro] radio cs0=ok cs1=ok selftest=pass rssi=<n> lqi=<n> crc=1`.
-   **Record the RSSI and LQI here** — those numbers are the measured answer to
-   whether two antennas centimetres apart saturate rather than demodulate.
+1. **PASSED 2026-07-29. The main console reports the self-test.** Repeated once
+   a second for the first 10 s:
+   `[wilidoro] radio cs0=ok cs1=ok selftest=pass rssi=-46 lqi=0 crc=1`.
+   Those numbers are the measured answer to whether two antennas centimetres
+   apart saturate rather than demodulate. They do not.
    `selftest=FAIL transmitter never keyed` and `selftest=DEGRADED keyed but
    heard nothing` are different faults: the first is a synthesiser that will not
    lock, the second is an RF path that carried nothing. That distinction is
    deliberate — collapsing the two is what made the BSP's 315 MHz result
    undiagnosable on first measurement.
-2. **The display console echoes it**, on change only, so a healthy board prints
-   it once rather than every 5 s.
-3. **Settings shows the radio.** With both CC1101s up it must not say "no
-   radio". Pull the main CPU into BOOTSEL (`fw bootsel --cpu main`) and within
-   15 s it must start saying so — that is the `0x42` liveness window working.
-4. **Nearby is empty by default**, with a single board. The device's own echo is
-   dropped.
-5. **Press `Self` on Nearby (column 4).** Within one beacon period (~20 s) our
+2. **PASSED 2026-07-29. The display knows.** Its 1 Hz heartbeat carries
+   `radio=ok`, which is `hal_caps().radio` — so the whole `0x42` path is
+   proven: main built it, the link carried it, `hal_og.c` parsed it. The
+   change-only detail line (RSSI/LQI) also prints on that console.
+3. **PASSED 2026-07-29. The liveness window closes.** `fw bootsel --cpu main`
+   took the main CPU away and the display flipped to `radio=FAILED` at
+   **t+12 s**, inside the 15 s window. Settings renders the same value.
+4. **NOT DONE — needs the panel. Nearby is empty by default**, with a single
+   board. The device's own echo is dropped.
+5. **NOT DONE — needs the panel. Press `Self` on Nearby (column 4).** Within one beacon period (~20 s) our
    own name must appear, in the theme accent colour. This is the whole chain
    proven end to end on one board: `beacon_pack` → `0x40` → CS0 keys → over the
    air → CS1 → `0x41` → `beacon_unpack` → a row on screen.
-6. **Press `Self` again.** The row must disappear within `neighbor_expire()`'s
+6. **NOT DONE — needs the panel. Press `Self` again.** The row must disappear within `neighbor_expire()`'s
    timeout.
-7. **Confirm `Self` renders cleanly.** Measured at 30 px in a 60 px button
+7. **NOT DONE — needs the panel. Confirm `Self` renders cleanly.** Measured at 30 px in a 60 px button
    above, so this should be comfortable — but nobody has looked at it on the
    panel.
-8. **Turn the beacon off in Settings.** Nearby must stop gaining rows.
+8. **NOT DONE — needs the panel. Turn the beacon off in Settings.** Nearby must stop gaining rows.
 
-### If the self-test fails: the one prepared fallback
+### What the board actually said (2026-07-29)
 
-Fixed-length packet mode is the single place this feature knowingly leaves the
-configuration `bench_main` measured on this board — `bench_main` proved
-*variable*-length, reading `buf[0]` as the count. If the self-test degrades
-while `bench_main`'s own `rf` + `loop` still pass on the same board, suspect
-this before suspecting the RF path:
+**Fixed-length packet mode does not work with this driver.** Not a tuning
+choice — a hard incompatibility, found on the first flash:
 
-- `configure_radio()`: `cc1101_set_length_config(r, 1u)` (1 = variable) and drop
-  the `cc1101_set_packet_length()` call.
-- Transmit 17 bytes whose byte 0 is `0x10` (16), followed by the wire frame.
-- On receive, expect `1 + BEACON_WIRE_LEN + 2` bytes, check `buf[0] == 16`, and
-  read the payload from offset **1**; the status bytes shift by one.
+```
+radio cs0=ok cs1=ok selftest=DEGRADED heard but payload wrong rssi=-46 lqi=1 crc=1
+```
 
-Do not make this change speculatively. It costs a byte per frame and is only
-worth it if a measurement says so.
+`cc1101_send_packet()` **unconditionally writes a length byte into the TX FIFO**
+before the payload (`cc1101.c:709`), because it was ported from a reference that
+only ever used variable-length mode. There is no flag to suppress it. In
+fixed-length mode with `PKTLEN=16` the radio therefore transmits
+`[0x10, wire[0..14]]` and silently drops `wire[15]`. The hardware CRC still
+passes — the frame is self-consistent, just shifted by one — so the symptom is
+the confusing pair `crc=1` **and** "payload wrong".
+
+**Anyone using this driver must use variable length** (`cc1101_set_length_config
+(r, 1u)`), leave `PKTLEN` at the bringup bank's default (in variable mode it is
+a maximum, not a length), and read the payload from **offset 1**. The send call
+needs no change at all: the driver's own length byte is correct there.
+
+> The OG-D spec originally proposed a fallback that transmitted a 17-byte
+> buffer with a manual `0x10` prefix. **That would have prepended the length
+> byte twice.** Corrected in the spec; recorded here because the mistake is an
+> easy one to repeat.
+
+After the fix, on the board:
+
+```
+radio cs0=ok cs1=ok selftest=pass rssi=-46 lqi=0 crc=1
+```
+
+**The near-field question is answered, with numbers.** The og-port design ranked
+"two antennas inches apart may saturate the receiver rather than cleanly
+demodulating" as risk 5. At −30 dBm across the two on-board antennas the
+receiver reports **RSSI −46 dBm, LQI 0** (0 is the best value the part reports)
+and a passing CRC. Not saturated, not marginal — clean. **Risk retired by
+measurement.**
+
+**The `0x42` liveness window works.** Measured directly: with the display
+running, `fw bootsel --cpu main` was used to take the main CPU away, and the
+display's own heartbeat flipped from `radio=ok` to `radio=FAILED` at **t+12 s**,
+inside the 15 s design window. This is the failure a hardcoded
+`caps.radio = true` could never have reported, and it is the whole reason the
+`0x42` opcode exists.
+
+**A boot-time-only `DIAG` is invisible; this cost a whole flash cycle.** The
+self-test line ran once inside the window before USB CDC enumerates, and
+`pico_stdio_usb` dropped it — the single most important line in the feature was
+missing from *both* consoles. `main.c`'s "main alive" line and
+`target_og/main.c`'s heartbeat both already repeat for exactly this reason. Both
+now carry the radio state; the full RSSI/LQI line repeats for the first 10 s.
+
+**Catching that 10 s window from the host is genuinely awkward.** The display
+image transfer runs first and can eat most of it. Open the CDC port in a tight
+retry loop immediately after `flash_og.ps1` returns rather than sleeping for a
+fixed interval, or you will land in steady state and see only `radio=ok`.
+
+**LVGL heap on the display, with the beacon live:** `free=35188 max_used=28604
+frag_pct=1`. The extra ~8 KB of link buffers did not disturb it.
 
 ### Two things still need a second board
 
