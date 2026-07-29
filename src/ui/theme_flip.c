@@ -1,4 +1,5 @@
 #include "theme.h"
+#include "ui.h"
 #include <stdio.h>
 
 #define FL_BG1   0x221f1d
@@ -13,7 +14,7 @@ static lv_obj_t *s_mm, *s_ss, *s_status, *s_bar, *s_title;
 
 static lv_obj_t *card(lv_obj_t *par, int x) {
     lv_obj_t *c = lv_obj_create(par);
-    lv_obj_set_size(c, 150, 150);
+    lv_obj_set_size(c, UI_FLIP_CARD, UI_FLIP_CARD);
     lv_obj_align(c, LV_ALIGN_CENTER, x, -14);
     lv_obj_set_style_bg_color(c, lv_color_hex(FL_CARD), 0);
     lv_obj_set_style_radius(c, 12, 0);
@@ -22,7 +23,7 @@ static lv_obj_t *card(lv_obj_t *par, int x) {
     lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
     /* mid seam */
     lv_obj_t *seam = lv_obj_create(c);
-    lv_obj_set_size(seam, 150, 3);
+    lv_obj_set_size(seam, UI_FLIP_CARD, 3);
     lv_obj_align(seam, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_style_bg_color(seam, lv_color_hex(FL_SEAM), 0);
     lv_obj_set_style_border_width(seam, 0, 0);
@@ -36,28 +37,28 @@ static void fl_build(lv_obj_t *face) {
     lv_obj_align(s_title, LV_ALIGN_TOP_MID, 0, 12);
     lv_label_set_text(s_title, "focus");
 
-    lv_obj_t *cm = card(face, -84);
+    lv_obj_t *cm = card(face, -UI_FLIP_CARD_X);
     s_mm = lv_label_create(cm);
     lv_obj_set_style_text_color(s_mm, lv_color_hex(FL_TEXT), 0);
-    lv_obj_set_style_text_font(s_mm, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(s_mm, UI_FONT_BIG, 0);
     lv_obj_center(s_mm); lv_label_set_text(s_mm, "25");
 
-    lv_obj_t *cs = card(face, 84);
+    lv_obj_t *cs = card(face, UI_FLIP_CARD_X);
     s_ss = lv_label_create(cs);
     lv_obj_set_style_text_color(s_ss, lv_color_hex(FL_TEXT), 0);
-    lv_obj_set_style_text_font(s_ss, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(s_ss, UI_FONT_BIG, 0);
     lv_obj_center(s_ss); lv_label_set_text(s_ss, "00");
 
     /* colon */
     lv_obj_t *colon = lv_label_create(face);
     lv_obj_set_style_text_color(colon, lv_color_hex(FL_TEXT), 0);
-    lv_obj_set_style_text_font(colon, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(colon, UI_FONT_BIG, 0);
     lv_obj_align(colon, LV_ALIGN_CENTER, 0, -20);
     lv_label_set_text(colon, ":");
 
     s_bar = lv_bar_create(face);
-    lv_obj_set_size(s_bar, 300, 8);
-    lv_obj_align(s_bar, LV_ALIGN_CENTER, 0, 84);
+    lv_obj_set_size(s_bar, UI_FLIP_BAR_W, 8);
+    lv_obj_align(s_bar, LV_ALIGN_CENTER, 0, UI_FLIP_BAR_Y);
     lv_bar_set_range(s_bar, 0, 1000);
     lv_bar_set_value(s_bar, 1000, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(s_bar, lv_color_hex(FL_CARD), LV_PART_MAIN);
@@ -68,7 +69,7 @@ static void fl_build(lv_obj_t *face) {
     s_status = lv_label_create(face);
     lv_obj_set_style_text_color(s_status, lv_color_hex(FL_MUTED), 0);
     lv_obj_set_style_text_font(s_status, &lv_font_montserrat_16, 0);
-    lv_obj_align(s_status, LV_ALIGN_CENTER, 0, 108);
+    lv_obj_align(s_status, LV_ALIGN_CENTER, 0, UI_FLIP_STATUS_Y);
     lv_label_set_text(s_status, "ready when you are");
 }
 

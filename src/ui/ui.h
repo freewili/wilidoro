@@ -12,6 +12,7 @@
   #define UI_SOFTKEY_BTN_W   60
   #define UI_SOFTKEY_BTN_H   22
   #define UI_ARCADE_BAR_H    16
+  #define UI_FLIP_CARD       100
 #else
   #define UI_W               480
   #define UI_H               320
@@ -20,12 +21,24 @@
   #define UI_SOFTKEY_BTN_W   92
   #define UI_SOFTKEY_BTN_H   28
   #define UI_ARCADE_BAR_H    22
+  #define UI_FLIP_CARD       150
 #endif
 /* The face is everything above the softkey bar. */
 #define UI_FACE_H           (UI_H - UI_SOFTKEY_H)
 /* Health-bar width: 400 on FW2 (480-80), 240 on the OG (320-80), matching
    the literal each build had before. */
 #define UI_ARCADE_BAR_W      (UI_W - 80)
+/* Flip-clock session-bar width: 300 on FW2, 140 on the OG. */
+#define UI_FLIP_BAR_W         (UI_W - 180)
+/* Flip card centre offset from the face centre: 84 on FW2, 59 on the OG,
+   matching the literal each build had before. */
+#define UI_FLIP_CARD_X        (UI_FLIP_CARD/2 + 9)
+/* Flip session-bar y-offset from the face centre: 84 on FW2, 47 on the OG,
+   matching the literal each build had before. */
+#define UI_FLIP_BAR_Y         (UI_FACE_H/2 - 59)
+/* Flip status-label y-offset from the face centre: 108 on FW2, 71 on the OG,
+   matching the literal each build had before. */
+#define UI_FLIP_STATUS_Y      (UI_FACE_H/2 - 35)
 /* neutral palette (Plan B2 themes override per-screen) */
 #define UI_BG      0x0C0C12
 #define UI_PANEL   0x141b26

@@ -47,6 +47,7 @@ add_executable(wilidoro_display
     src/ui/theme.c
     src/ui/theme_neon.c
     src/ui/theme_arcade.c
+    src/ui/theme_flip.c
 )
 target_compile_definitions(wilidoro_display PRIVATE WILIDORO_BOARD_OG=1)
 target_include_directories(wilidoro_display PRIVATE
