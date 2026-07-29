@@ -215,10 +215,23 @@ exists to prevent.
 ### RAM
 
 `fwog_link_rx_t` embeds a 4160-byte payload buffer, so one costs 4168 bytes on
-the display CPU. Against the measured Plan OG-A baseline of 152,188 B of 264 KB
-this is 1.6 %, and the og-port design already budgeted 4 KB for it. Not a
-concern, but it is the single largest allocation this plan adds and should be
-confirmed against a real map file rather than assumed.
+the display CPU. The og-port design budgeted 4 KB for it.
+
+*Corrected by measurement during implementation:* **the real cost is 8,376 B,
+double that.** `wilidoro_display` went from 162,940 B to 171,316 B (62.16 % →
+65.35 % of 256 KB). The missing half is not ours and is not visible at the call
+site: `fwog_link_uart_send_frame()` (`link_uart.c:85`) keeps its **own** static
+4,165-byte framing buffer, sized for the maximum payload, and it is linked in
+the moment that function is called once.
+
+Kept as-is — about 89 KB stays free, and using the BSP's documented helper is
+worth more than 4 KB nothing needs. The escape hatch, should RAM ever get
+tight, is `fwog_link_encode()` into a small local followed by
+`fwog_link_uart_write()`: the largest payload here is 17 bytes, so 22 bytes of
+stack replaces the BSP's 4 KB static. Recorded in `docs/hardware-notes.md`.
+
+Note the Plan OG-A baseline of 152,188 B is **not** the right comparison for
+this or any later plan — it predates OG-B and OG-C.
 
 ## The main half — `src/main_og/main.c`
 
@@ -422,10 +435,19 @@ needed at 433.92 MHz, fact 2).
 
 Deliberately excluded, so nothing here is mistaken for missing:
 
-- **Making the simulator honest.** `hal_sim.c` synthesises a fake `JEN`
-  neighbour every 4 s in OG mode that no real board can produce, and
-  `README.md:116` claims beacon reception stays off. Both were flagged in review
-  and both become wrong in a new way once this lands. Separate follow-up.
+- **Making the simulator model the beacon.** `hal_sim.c`'s OG branch returns
+  `false` and continues to; the simulator models neither the link nor the
+  radios, so Nearby stays empty there and the `Self` softkey has no observable
+  effect. Separate follow-up.
+
+  *Corrected during implementation:* this section originally claimed
+  `hal_sim.c` "synthesises a fake `JEN` neighbour every 4 s in OG mode that no
+  real board can produce". **That was wrong**, inherited from a stale review
+  note. `hal_sim.c:100` already guards the fake behind
+  `#if defined(WILIDORO_BOARD_OG)` / `#else` — the JEN neighbour is FW2-only
+  and never appeared in OG mode. `README.md:116`'s claim that beacon reception
+  stays off is what does become stale once this lands, and updating it remains
+  a follow-up.
 - **The softkey label clipping.** `Resume` and `Dismiss` overflow their 60 px
   buttons at 320×240 — measured, unfixed, unrelated to the radio.
 - **Refreshing the og-port design's Status paragraph**, which still describes
