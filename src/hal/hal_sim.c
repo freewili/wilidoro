@@ -72,11 +72,26 @@ void hal_audio_idle(void) {}
 
 void hal_backlight(uint8_t pct) { (void)pct; }
 
+#if defined(WILIDORO_BOARD_OG)
+/* Mirrors hal_og.c's stub exactly (Plan OG-B): the OG's LIS3DH is not wired
+   up yet, so hal_imu() always fails on real hardware. screen_settings.c's
+   Tilt-to-pause toggle and app.c's sensor_cb both call this HAL seam without
+   gating on hal_caps().imu -- by design, so the FW2's shared code stays
+   untouched -- so if this returned fake tilt data here instead, the OG
+   simulator would let a user actually pause/resume a session with the
+   fake-tilt keys, something the real board cannot do. That is the exact
+   failure mode this task exists to prevent, so this stays a hard `false`,
+   not a fake reading, until Plan OG-B Task 4 lands the LIS3DH driver and its
+   bench-measured axis constant -- update this branch and hal_og.c together
+   when that happens, not one without the other. */
+bool hal_imu(float *ax, float *ay, float *az) { (void)ax;(void)ay;(void)az; return false; }
+#else
 bool hal_imu(float *ax, float *ay, float *az) {
     float rad = (float)s_tilt_deg * 3.14159265f / 180.0f;
     *ax = sinf(rad); *ay = 0.0f; *az = cosf(rad);
     return true;
 }
+#endif
 #if defined(WILIDORO_BOARD_OG)
 bool hal_lux(float *lux) { (void)lux; return false; }   /* no ambient sensor on the OG */
 #else
