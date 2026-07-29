@@ -7,6 +7,7 @@
 #include "radio/cc1101.h"
 #include "wilidoro_link.h"
 #include "beacon.h"
+#include "common/link/link_frame.h"
 #include "pico/stdlib.h"
 #include <string.h>
 
@@ -157,6 +158,63 @@ static void radio_init(void) {
          (unsigned)(s_lqi & 0x7Fu), (s_lqi & 0x80u) ? 1 : 0);
 }
 
+/* Main's own receive state. fwog_display_update_run() already called
+   fwog_link_uart_init() (display_update.c:185) and does NOT deinit, so the
+   UART is up -- but its rx state is internal to that module, so we need our
+   own. */
+static fwog_link_rx_t s_link_rx;
+
+#define WD_STATUS_PERIOD_MS 5000u
+/* Bytes drained per pass. Bounded so a babbling link cannot stall the loop
+   past its 2 s watchdog. */
+#define WD_DRAIN_BUDGET 256u
+
+static void send_status(void) {
+    uint8_t p[sizeof(wd_link_status_t)];
+    const size_t n = wd_link_build_status(p, sizeof p, s_flags,
+                                          (uint8_t)s_selftest, s_rssi, s_lqi);
+    if (n != 0u) (void)fwog_link_uart_send_frame(p, n);
+}
+
+/* Drain the link and transmit any 0x40 the display sent down. */
+static void service_link(void) {
+    uint8_t b;
+    size_t len = 0;
+    for (unsigned i = 0; i < WD_DRAIN_BUDGET && fwog_link_uart_read(&b); i++) {
+        if (!fwog_link_rx_byte(&s_link_rx, b, &len)) continue;
+        if (wd_link_type(s_link_rx.buf, len) != WD_LINK_MSG_BEACON_TX) continue;
+        uint8_t wire[BEACON_WIRE_LEN];
+        if (!wd_link_parse_beacon(s_link_rx.buf, len, wire)) continue;
+        if (!(s_flags & WD_STATUS_CS0_UP)) continue;   /* no transmitter */
+        (void)cc1101_send_packet(&s_radio[WD_TXR], wire, (uint8_t)BEACON_WIRE_LEN);
+    }
+}
+
+/* Forward anything CS1 heard. */
+static void poll_radio(void) {
+    if (!(s_flags & WD_STATUS_CS1_UP)) return;
+    const int raw = cc1101_rx_bytes_available(&s_radio[WD_RXR]);
+    if (raw < 0) return;                       /* SPI timeout */
+    if (raw & 0x80) {                          /* RXFIFO_OVERFLOW */
+        cc1101_flush_rx(&s_radio[WD_RXR]);
+        (void)cc1101_rx(&s_radio[WD_RXR]);
+        return;
+    }
+    const unsigned n = (unsigned)(raw & 0x7F);
+    if (n < BEACON_WIRE_LEN + 2u) return;      /* not a whole packet yet */
+
+    uint8_t buf[BEACON_WIRE_LEN + 2];          /* payload + RSSI + LQI */
+    if (cc1101_receive_packet(&s_radio[WD_RXR], buf, (uint8_t)sizeof buf) < 0) return;
+
+    uint8_t p[sizeof(wd_link_beacon_t)];
+    const size_t m = wd_link_build_beacon(p, sizeof p, WD_LINK_MSG_BEACON_RX, buf);
+    if (m != 0u) (void)fwog_link_uart_send_frame(p, m);
+
+    /* Re-arm: the bringup bank's MCSM1 returns the radio to IDLE after a
+       received packet, so without this CS1 hears exactly one frame per boot. */
+    (void)cc1101_rx(&s_radio[WD_RXR]);
+}
+
 int main(void) {
     board_init();
 
@@ -169,6 +227,7 @@ int main(void) {
        link is down the USB console is the only readout there is, which is
        exactly when the self-test result matters most. */
     radio_init();
+    fwog_link_rx_init(&s_link_rx);
 
     /* Announce the transfer result for the first 10 s rather than once. The
        handshake finishes before USB CDC has enumerated and the host has
@@ -177,6 +236,7 @@ int main(void) {
     const absolute_time_t announce_until = make_timeout_time_ms(10000);
 
     absolute_time_t next_beat = make_timeout_time_ms(1000);
+    absolute_time_t next_status = make_timeout_time_ms(WD_STATUS_PERIOD_MS);
     while (true) {
         /* REQUIRED. board_init() arms a 2 s watchdog and it is the only way
            to recover a hung main CPU on this board, so the BSP makes kicking
@@ -186,6 +246,13 @@ int main(void) {
            GUI_NRESET. That is measured, not feared: it is what this file did
            on the first hardware bring-up. */
         board_watchdog_kick();
+
+        service_link();
+        poll_radio();
+        if (time_reached(next_status)) {
+            next_status = make_timeout_time_ms(WD_STATUS_PERIOD_MS);
+            send_status();
+        }
 
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
