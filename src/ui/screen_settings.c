@@ -10,6 +10,18 @@
 static lv_obj_t *s_scr, *s_list, *s_bar, *s_title;
 static lv_obj_t *s_val_focus, *s_val_short, *s_val_long, *s_val_vol, *s_val_beacon, *s_val_theme, *s_val_dvi, *s_val_tilt;
 
+#if defined(WILIDORO_BOARD_OG)
+/* OG only: no touchscreen, so the per-row +/- buttons never receive
+   LV_EVENT_CLICKED. Settings is instead driven from the five-button softkey
+   bar (see screen_settings_softkey below), which needs the row objects and
+   each row's `which` enum to move a selection and adjust it. */
+enum { N_SET_ROWS = 8 };
+static lv_obj_t *s_row_obj[N_SET_ROWS];
+static int       s_row_which[N_SET_ROWS];
+static int       s_row_count = 0;
+static int       s_sel = 0;
+#endif
+
 static void refresh_values(void) {
     app_settings_t *s = &app()->settings; char b[16];
     snprintf(b,sizeof b,"%u min",s->focus_min); lv_label_set_text(s_val_focus,b);
@@ -27,9 +39,14 @@ static void refresh_values(void) {
 
 /* Each row: [label] [-] [value] [+]. user_data on +/- encodes which setting & sign. */
 enum { SET_FOCUS=1, SET_SHORT, SET_LONG, SET_VOL, SET_BEACON, SET_THEME, SET_DVI, SET_TILT };
-static void adj_event(lv_event_t *e) {
-    intptr_t code = (intptr_t)lv_event_get_user_data(e);
-    int which = (int)(code >> 1); int sign = (code & 1) ? +1 : -1;
+
+/* The single definition of what adjusting a setting means. Shared by the FW2
+   touch path (adj_event, below) and the OG's Left/Right softkey columns, so
+   there is exactly one switch table to keep in sync -- not two that can
+   drift. SET_THEME ignores `sign` (app_settings_cycle_theme() only cycles
+   forward), so on the OG both Left and Right advance the theme; that is a
+   known, accepted asymmetry -- see screen_settings_softkey(). */
+static void apply_adjust(int which, int sign) {
     app_settings_t *s = &app()->settings;
     switch (which) {
         case SET_FOCUS: app_settings_adjust_focus(s, sign); break;
@@ -43,9 +60,19 @@ static void adj_event(lv_event_t *e) {
     }
     refresh_values();
 }
+static void adj_event(lv_event_t *e) {
+    intptr_t code = (intptr_t)lv_event_get_user_data(e);
+    int which = (int)(code >> 1); int sign = (code & 1) ? +1 : -1;
+    apply_adjust(which, sign);
+}
 
 static lv_obj_t *add_row(const char *name, int which) {
     lv_obj_t *row = lv_obj_create(s_list);
+#if defined(WILIDORO_BOARD_OG)
+    s_row_obj[s_row_count] = row;
+    s_row_which[s_row_count] = which;
+    s_row_count++;
+#endif
     lv_obj_set_size(row, lv_pct(100), UI_ROW_H);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);   /* let the LIST scroll, not the row */
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);    /* flat: no box around each setting */
@@ -76,6 +103,22 @@ static lv_obj_t *add_row(const char *name, int which) {
     return val;
 }
 
+#if defined(WILIDORO_BOARD_OG)
+/* Move the selection to row `idx` (wrapping both directions), give it a
+   visible background (the other rows stay the transparent look add_row
+   already gives them), and scroll it into view so rows 5-8, which sit below
+   the fold on a 320x240 panel, become reachable. */
+static void select_row(int idx) {
+    if (idx < 0) idx = N_SET_ROWS - 1;
+    else if (idx >= N_SET_ROWS) idx = 0;
+    lv_obj_set_style_bg_opa(s_row_obj[s_sel], LV_OPA_TRANSP, 0);
+    s_sel = idx;
+    lv_obj_set_style_bg_color(s_row_obj[s_sel], lv_color_hex(UI_PANEL), 0);
+    lv_obj_set_style_bg_opa(s_row_obj[s_sel], LV_OPA_COVER, 0);
+    lv_obj_scroll_to_view(s_row_obj[s_sel], LV_ANIM_OFF);
+}
+#endif
+
 lv_obj_t *screen_settings_create(void) {
     s_scr = ui_screen();
     s_title = lv_label_create(s_scr); lv_label_set_text(s_title,"SETTINGS");
@@ -101,9 +144,21 @@ lv_obj_t *screen_settings_create(void) {
     s_val_tilt   = add_row("Tilt to pause", SET_TILT);
 
     s_bar = ui_softkey_bar(s_scr, screen_settings_softkey);
+#if defined(WILIDORO_BOARD_OG)
+    /* Arrow-pad layout per wiliOGbsp/AGENTS.md: grey/red move the selection,
+       yellow/blue adjust it, green applies and returns. */
+    const char *lbl[5] = {"Up", "-", "OK", "+", "Down"};
+#else
     const char *lbl[5] = {"Back", 0, "Default", 0, "Save"};
+#endif
     ui_softkey_set_labels(s_bar, lbl);
     refresh_values();
+#if defined(WILIDORO_BOARD_OG)
+    /* The screen is built once in app_init() and reused, so this only runs
+       on the very first visit; the selection persists across later visits
+       by design (nothing re-selects row 0 on entry). */
+    select_row(0);
+#endif
     return s_scr;
 }
 
@@ -112,6 +167,28 @@ void screen_settings_update(void) {
 }
 
 void screen_settings_softkey(int col) {
+#if defined(WILIDORO_BOARD_OG)
+    /* Arrow pad per wiliOGbsp/AGENTS.md: softkey columns 0..4 are the
+       physical GRAY,YELLOW,GREEN,BLUE,RED buttons, left to right (see
+       hal_og.c). Red's short press lands here as Down; its ~6s hold is the
+       BSP power-off gesture handled entirely in hal_pump(), untouched by
+       this switch. There is no slot for "Default" or "Back" on five
+       buttons -- OK covers leaving, and Settings mutates app()->settings
+       live so there was never anything for Back to discard. */
+    app_t *a = app();
+    switch (col) {
+        case 0: select_row(s_sel - 1); break;                  /* grey: Up */
+        case 1: apply_adjust(s_row_which[s_sel], -1); break;   /* yellow: Left */
+        case 2: {                                               /* green: OK */
+            pm_config_t c = { a->settings.focus_min, a->settings.short_min, a->settings.long_min, a->settings.long_every };
+            if (a->pomo.state == PM_IDLE) pomodoro_init(&a->pomo, c); /* apply only when idle to avoid mid-session surprise */
+            app_goto(SCREEN_TIMER);
+            break;
+        }
+        case 3: apply_adjust(s_row_which[s_sel], +1); break;   /* blue: Right */
+        case 4: select_row(s_sel + 1); break;                  /* red: Down */
+    }
+#else
     app_t *a = app();
     if (col==0) { app_goto(SCREEN_TIMER); }
     else if (col==2) { app_settings_defaults(&a->settings); refresh_values(); screen_timer_apply_theme(); app_dvi_apply(); app_tilt_apply(); }
@@ -120,4 +197,5 @@ void screen_settings_softkey(int col) {
         if (a->pomo.state == PM_IDLE) pomodoro_init(&a->pomo, c); /* apply only when idle to avoid mid-session surprise */
         app_goto(SCREEN_TIMER);
     }
+#endif
 }
