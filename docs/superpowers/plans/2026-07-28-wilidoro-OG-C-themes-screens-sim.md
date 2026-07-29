@@ -300,6 +300,63 @@ still owns power-off."
 
 ---
 
+### Task 3b: Operating Settings on the OG's five buttons
+
+**Added during execution, after Task 3's review.** Not in the original plan —
+recorded here because the plan is the spec of record and this task shipped.
+
+**Why it exists.** Task 3 enabled Settings on the OG, and its review found the
+screen could not be *operated* there. The OG has no touchscreen and
+`src/target_og/lvgl_port_og.c` registers no `lv_indev_t` — only the FW2 does
+(`src/target/lvgl_port.c:43`, a POINTER fed by touch). The OG's five buttons run
+`hal_og.c:63` → `hal_next_button()` → `app.c`'s `route_softkey()`, bypassing
+LVGL entirely, so the per-row `+`/`−` `lv_button` widgets can never receive
+`LV_EVENT_CLICKED`. No individual setting was changeable on the OG, the theme
+included, and rows 5–8 sat below the fold with no way to scroll.
+
+**This was a defect in this plan, not in Task 3's implementation.** Task 3
+Step 8 above asks a human to verify "the `+`/`−` buttons are hittable", which
+assumes an input model this board does not have. Read that step with this in
+mind.
+
+**The design.** `wiliOGbsp/AGENTS.md:255` documents the BSP's recommended
+arrow-pad layout for porting a FreeWili 2 app to the OG's five-button panel:
+green (centre) select/OK, yellow left, blue right, gray up, red down.
+`src/hal/hal_og.c:61` records that `fwog_btn_id_t` is `GRAY,YELLOW,GREEN,BLUE,RED
+== 0..4` and `hal_btn_t` matches, so softkey columns 0–4 are **UP, LEFT, OK,
+RIGHT, DOWN** in physical left-to-right order:
+
+| col | button | action |
+|---|---|---|
+| 0 | grey | Up — previous row (wraps) |
+| 1 | yellow | Left — adjust −1 |
+| 2 | green | OK — apply and return to the timer |
+| 3 | blue | Right — adjust +1 |
+| 4 | red | Down — next row (wraps) |
+
+OG labels are `{"Up", "-", "OK", "+", "Down"}`. Red's short press is Down; the
+BSP's power machine only sees the ~6 s **hold**, so power-off is unaffected.
+
+**No LVGL input device was added.** `screen_settings_softkey()` already receives
+all five columns, so a selected-row index, a highlight and
+`lv_obj_scroll_to_view()` are sufficient — which also reaches the rows that sat
+below the fold. This keeps the plan's "purely UI-layer, no HAL changes"
+architecture intact and confines the whole change to
+`src/ui/screen_settings.c` inside `#if defined(WILIDORO_BOARD_OG)`, which is
+what makes the FreeWili 2 non-regression provable by inspection.
+
+**Accepted consequences.** "Default" has no slot on the OG. "Back" is no loss —
+settings mutate `app()->settings` live, so the FW2's Back never discarded
+anything; OK covers leaving, and applies `pomodoro_init()` only when `PM_IDLE`
+exactly as the FW2's Save does. Left and Right both cycle the theme *forward*,
+because `app_settings_cycle_theme()` ignores sign and is shared app-layer code
+that the FreeWili 2 depends on.
+
+Full requirements as executed:
+`.superpowers/sdd/2026-07-28-wilidoro-OG-C-themes-screens-sim/task-3b-brief.md`
+
+---
+
 ### Task 4: An OG geometry mode for the simulator
 
 Pays for itself the first time a theme needs laying out without a board.
