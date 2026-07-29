@@ -31,6 +31,7 @@ add_executable(wilidoro_display
     src/target_og/main.c
     src/target_og/lvgl_port_og.c
     src/hal/hal_og.c
+    src/link/wilidoro_link.c
     src/core/pomodoro.c
     src/core/beacon.c
     src/core/beacon_rx.c
@@ -53,7 +54,7 @@ add_executable(wilidoro_display
 )
 target_compile_definitions(wilidoro_display PRIVATE WILIDORO_BOARD_OG=1)
 target_include_directories(wilidoro_display PRIVATE
-    src/core src/hal src/app src/ui src/target_og
+    src/core src/hal src/app src/ui src/target_og src/link
     config
 )
 target_link_libraries(wilidoro_display PRIVATE
@@ -75,9 +76,13 @@ set(FWOG_DISPLAY_FIRMWARE "wilidoro_display" CACHE STRING "Display image to embe
 
 add_executable(wilidoro_main
     src/main_og/main.c
+    src/link/wilidoro_link.c
+    # The self-test transmits a real beacon_pack() frame rather than an
+    # invented payload, so the main CPU links the shared codec too.
+    src/core/beacon.c
 )
 target_include_directories(wilidoro_main PRIVATE
-    src/core src/hal src/app src/main_og
+    src/core src/hal src/app src/main_og src/link
 )
 target_link_libraries(wilidoro_main PRIVATE
     pico_stdlib hardware_clocks hardware_gpio hardware_spi hardware_pio
