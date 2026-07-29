@@ -16,8 +16,8 @@
   #define UI_ROW_H           34
   #define UI_STEP_BTN_W      28
   #define UI_STEP_BTN_H      24
-  #define UI_SET_LABEL_W     132
-  #define UI_SET_VAL_W       66
+  #define UI_SET_LABEL_W     112
+  #define UI_SET_VAL_W       84
 #else
   #define UI_W               480
   #define UI_H               320
@@ -58,10 +58,14 @@
 /* Settings/Nearby row width, inset 10px each side: 460 on FW2, 300 on the OG,
    matching the literal each build had before. */
 #define UI_ROW_W              (UI_W - 20)
-/* Nearby row height is 44 on BOTH boards. It cannot shrink to UI_ROW_H (34 on
-   the OG) like screen_settings.c's rows do: each Nearby row stacks two
-   montserrat_16 labels (name at TOP_LEFT y=+4, sub at BOTTOM_LEFT y=-4, each
-   19px tall), which need ~42px clear or they overlap. */
+/* Nearby row height is 44 on BOTH boards -- this holds the FW2 literal
+   unchanged rather than deriving from UI_ROW_H (34 on the OG); each Nearby
+   row stacks two montserrat_16 labels (name at TOP_LEFT y=+4, sub at
+   BOTTOM_LEFT y=-4, each 19px tall) and the two overlap at the default theme
+   card padding (row content height 14px OG / 8px FW2) on BOTH boards, not
+   just at 34. The real fix, when Plan OG-D populates the list, is
+   `lv_obj_set_style_pad_all(row, 2, 0)` on the row. At 44 the OG's 162px-tall
+   list currently shows 2 rows (44*2 + pad_row 8 = 96 of 162) and scrolls. */
 #define UI_NEARBY_ROW_H       44
 /* neutral palette (Plan B2 themes override per-screen) */
 #define UI_BG      0x0C0C12

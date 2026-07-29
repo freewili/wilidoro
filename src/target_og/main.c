@@ -52,6 +52,9 @@ int main(void) {
 
     lvgl_port_og_init();
     app_init();               /* builds screens, starts the tick timer */
+    lv_mem_monitor_t mm0; lv_mem_monitor(&mm0);
+    DIAG("[wilidoro] lvgl heap after init: free=%u max_used=%u frag_pct=%u\n",
+         (unsigned)mm0.free_size, (unsigned)mm0.max_used, (unsigned)mm0.frag_pct);
     lv_timer_handler();       /* first frame */
     DIAG("wilidoro OG up: sys=%u kHz\n", (unsigned)(clock_get_hz(clk_sys) / 1000u));
 
@@ -67,9 +70,10 @@ int main(void) {
         lv_timer_handler();
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
-            DIAG("[wilidoro] alive (panel=%s leds=%s audio=%s)\n",
-                 panel_ok ? "ok" : "FAILED", leds_ok ? "ok" : "FAILED",
-                 audio_ok ? "ok" : "FAILED");
+            lv_mem_monitor_t mm; lv_mem_monitor(&mm);
+            DIAG("[wilidoro] alive (panel=%s leds=%s audio=%s) heap free=%u max_used=%u frag_pct=%u\n",
+                 panel_ok ? "ok" : "FAILED", leds_ok ? "ok" : "FAILED", audio_ok ? "ok" : "FAILED",
+                 (unsigned)mm.free_size, (unsigned)mm.max_used, (unsigned)mm.frag_pct);
         }
         sleep_ms(2);
     }
