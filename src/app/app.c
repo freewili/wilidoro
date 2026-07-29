@@ -3,10 +3,8 @@
 #include "sound.h"
 #include "ui.h"
 #include "screen_timer.h"
-#if !defined(WILIDORO_BOARD_OG)
 #include "screen_settings.h"
 #include "screen_nearby.h"
-#endif
 #include "dimming.h"
 #include "led_pattern.h"
 #include "timer_view.h"
@@ -92,12 +90,8 @@ static void route_softkey(int col) {
     app_sound(SND_BLIP);
     switch (s_app.screen) {
         case SCREEN_TIMER:    screen_timer_softkey(col);    break;
-#if !defined(WILIDORO_BOARD_OG)
         case SCREEN_SETTINGS: screen_settings_softkey(col); break;
         case SCREEN_NEARBY:   screen_nearby_softkey(col);   break;
-#else
-        default: break;
-#endif
     }
 }
 
@@ -247,12 +241,8 @@ static void tick_cb(lv_timer_t *t) {
     /* refresh the active screen */
     switch (s_app.screen) {
         case SCREEN_TIMER:    screen_timer_update();    break;
-#if !defined(WILIDORO_BOARD_OG)
         case SCREEN_SETTINGS: screen_settings_update(); break;
         case SCREEN_NEARBY:   screen_nearby_update();   break;
-#else
-        default: break;
-#endif
     }
 }
 
@@ -279,10 +269,8 @@ void app_init(void) {
     s_next_tick_ms = 0; s_alarm_next_ms = 0;
 
     s_scr[SCREEN_TIMER]    = screen_timer_create();
-#if !defined(WILIDORO_BOARD_OG)
     s_scr[SCREEN_SETTINGS] = screen_settings_create();
     s_scr[SCREEN_NEARBY]   = screen_nearby_create();
-#endif
     lv_screen_load(s_scr[SCREEN_TIMER]);
 
     lv_timer_create(tick_cb, 200, NULL);

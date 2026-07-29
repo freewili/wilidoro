@@ -46,7 +46,7 @@ static void adj_event(lv_event_t *e) {
 
 static lv_obj_t *add_row(const char *name, int which) {
     lv_obj_t *row = lv_obj_create(s_list);
-    lv_obj_set_size(row, lv_pct(100), 44);
+    lv_obj_set_size(row, lv_pct(100), UI_ROW_H);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);   /* let the LIST scroll, not the row */
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);    /* flat: no box around each setting */
     lv_obj_set_style_radius(row, 0, 0);
@@ -60,17 +60,17 @@ static lv_obj_t *add_row(const char *name, int which) {
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_t *l = lv_label_create(row); lv_label_set_text(l,name);
-    lv_obj_set_style_text_color(l, lv_color_hex(UI_TEXT), 0); lv_obj_set_width(l, 230);
-    lv_obj_t *minus = lv_button_create(row); lv_obj_set_size(minus,34,30);
+    lv_obj_set_style_text_color(l, lv_color_hex(UI_TEXT), 0); lv_obj_set_width(l, UI_SET_LABEL_W);
+    lv_obj_t *minus = lv_button_create(row); lv_obj_set_size(minus,UI_STEP_BTN_W,UI_STEP_BTN_H);
     lv_obj_add_event_cb(minus, adj_event, LV_EVENT_CLICKED, (void*)(intptr_t)((which<<1)|0));
     lv_obj_t *ml=lv_label_create(minus); lv_label_set_text(ml,"-"); lv_obj_center(ml);
-    lv_obj_t *val = lv_label_create(row); lv_obj_set_width(val, 90);
+    lv_obj_t *val = lv_label_create(row); lv_obj_set_width(val, UI_SET_VAL_W);
     /* Plain white, not UI_ACCENT: the saturated coral was picked as an accent for
        a neutral mock and is hard to read as body text on the dark list once the
        auto-dim backlight drops. These values are the thing you actually read. */
     lv_obj_set_style_text_color(val, lv_color_hex(UI_TEXT), 0);
     lv_obj_set_style_text_align(val, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_t *plus = lv_button_create(row); lv_obj_set_size(plus,34,30);
+    lv_obj_t *plus = lv_button_create(row); lv_obj_set_size(plus,UI_STEP_BTN_W,UI_STEP_BTN_H);
     lv_obj_add_event_cb(plus, adj_event, LV_EVENT_CLICKED, (void*)(intptr_t)((which<<1)|1));
     lv_obj_t *pl=lv_label_create(plus); lv_label_set_text(pl,"+"); lv_obj_center(pl);
     return val;
@@ -83,7 +83,7 @@ lv_obj_t *screen_settings_create(void) {
     lv_obj_align(s_title, LV_ALIGN_TOP_LEFT, 12, 8);
 
     s_list = lv_obj_create(s_scr);
-    lv_obj_set_size(s_list, 476, 236);
+    lv_obj_set_size(s_list, UI_LIST_W, UI_LIST_H);
     lv_obj_align(s_list, LV_ALIGN_TOP_MID, 0, 34);
     lv_obj_set_style_bg_color(s_list, lv_color_hex(UI_BG), 0);
     lv_obj_set_style_border_width(s_list, 0, 0);

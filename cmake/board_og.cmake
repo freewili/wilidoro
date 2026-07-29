@@ -44,6 +44,8 @@ add_executable(wilidoro_display
     src/app/tone_synth.c
     src/ui/ui.c
     src/ui/screen_timer.c
+    src/ui/screen_settings.c
+    src/ui/screen_nearby.c
     src/ui/theme.c
     src/ui/theme_neon.c
     src/ui/theme_arcade.c

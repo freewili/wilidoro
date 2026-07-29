@@ -13,6 +13,11 @@
   #define UI_SOFTKEY_BTN_H   22
   #define UI_ARCADE_BAR_H    16
   #define UI_FLIP_CARD       100
+  #define UI_ROW_H           34
+  #define UI_STEP_BTN_W      28
+  #define UI_STEP_BTN_H      24
+  #define UI_SET_LABEL_W     132
+  #define UI_SET_VAL_W       66
 #else
   #define UI_W               480
   #define UI_H               320
@@ -22,6 +27,11 @@
   #define UI_SOFTKEY_BTN_H   28
   #define UI_ARCADE_BAR_H    22
   #define UI_FLIP_CARD       150
+  #define UI_ROW_H           44
+  #define UI_STEP_BTN_W      34
+  #define UI_STEP_BTN_H      30
+  #define UI_SET_LABEL_W     230
+  #define UI_SET_VAL_W       90
 #endif
 /* The face is everything above the softkey bar. */
 #define UI_FACE_H           (UI_H - UI_SOFTKEY_H)
@@ -39,6 +49,20 @@
 /* Flip status-label y-offset from the face centre: 108 on FW2, 71 on the OG,
    matching the literal each build had before. */
 #define UI_FLIP_STATUS_Y      (UI_FACE_H/2 - 35)
+/* Settings/Nearby list width, inset 2px each side from the panel: 476 on FW2,
+   316 on the OG, matching the literal each build had before. */
+#define UI_LIST_W             (UI_W - 4)
+/* Settings/Nearby list height, below the 34px title band: 236 on FW2, 162 on
+   the OG, matching the literal each build had before. */
+#define UI_LIST_H             (UI_FACE_H - 50)
+/* Settings/Nearby row width, inset 10px each side: 460 on FW2, 300 on the OG,
+   matching the literal each build had before. */
+#define UI_ROW_W              (UI_W - 20)
+/* Nearby row height is 44 on BOTH boards. It cannot shrink to UI_ROW_H (34 on
+   the OG) like screen_settings.c's rows do: each Nearby row stacks two
+   montserrat_16 labels (name at TOP_LEFT y=+4, sub at BOTTOM_LEFT y=-4, each
+   19px tall), which need ~42px clear or they overlap. */
+#define UI_NEARBY_ROW_H       44
 /* neutral palette (Plan B2 themes override per-screen) */
 #define UI_BG      0x0C0C12
 #define UI_PANEL   0x141b26

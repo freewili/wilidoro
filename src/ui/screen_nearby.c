@@ -15,7 +15,7 @@ lv_obj_t *screen_nearby_create(void) {
     lv_obj_align(s_title, LV_ALIGN_TOP_LEFT, 12, 8);
 
     s_list = lv_obj_create(s_scr);
-    lv_obj_set_size(s_list, 476, 236);
+    lv_obj_set_size(s_list, UI_LIST_W, UI_LIST_H);
     lv_obj_align(s_list, LV_ALIGN_TOP_MID, 0, 34);
     lv_obj_set_style_bg_color(s_list, lv_color_hex(UI_BG), 0);
     lv_obj_set_flex_flow(s_list, LV_FLEX_FLOW_COLUMN);
@@ -41,7 +41,7 @@ void screen_nearby_update(void) {
         if (!t->items[i].used) continue;
         neighbor_t *n = &t->items[i];
         lv_obj_t *row = lv_obj_create(s_list);
-        lv_obj_set_size(row, 460, 44);
+        lv_obj_set_size(row, UI_ROW_W, UI_NEARBY_ROW_H);
         lv_obj_set_style_bg_color(row, lv_color_hex(UI_PANEL), 0);
         char nm[APP_NAME_LEN+1]; memcpy(nm, n->name, APP_NAME_LEN); nm[APP_NAME_LEN]=0;
         for (int k=APP_NAME_LEN-1;k>=0 && nm[k]==' ';k--) nm[k]=0;
