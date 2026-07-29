@@ -702,6 +702,66 @@ quality itself is wrong, the fix lives in `sound.c`'s shared note tables —
 but since those are shared with the FreeWili 2, treat any change there as its
 own decision, not a quick tweak, and record the outcome here once judged.
 
+## FreeWili OG — tilt-to-pause axis (bench-measured 2026-07-29)
+
+*The axis mapping is confirmed on hardware via a temporary DIAG (since
+removed). The end-to-end pause/resume behaviour — the app actually pausing
+when the board is tipped and resuming when it's set flat — has **not** been
+confirmed by a human as of this writing; that check happens on the next
+flash.*
+
+Plan OG-B (Task 4) wires the LIS3DH into `hal_imu()` in `src/hal/hal_og.c`.
+`lis3dh_init()`/`lis3dh_configure(LIS3DH_RANGE_2G)` run in
+`src/target_og/main.c` next to Tasks 1 and 3's `ws2812_init()` /
+`i2s_audio_init()`, and the heartbeat now reads
+`alive (panel=%s leds=%s audio=%s imu=%s)`.
+
+**The plan's `LIS3DH_COUNTS_PER_G 16384.0f` is wrong and was not used.**
+`hal_imu()` instead calls the BSP's own host-tested
+`lis3dh_raw_to_mg(raw, LIS3DH_RANGE_2G)`
+(`wiliOGbsp/bsp/display_cpu/sensors/lis3dh.h:204-214`), dividing its milli-g
+result by 1000 to get g. At ±2 g the part is Normal-mode 10-bit, 4 mg/digit,
+and the register pair is left-justified so the raw value needs an arithmetic
+`>>6` before that scaling — `lis3dh_raw_to_mg()` does both. Worked out as a
+single g-per-count figure, that is **16000 raw counts per g, not 16384**
+(16384 = 2^14, reached for by hand, off by 2.4%). No `COUNTS_PER_G` constant
+was reintroduced; the range lives in one place, the `lis3dh_configure()` call.
+
+### The measurement
+
+Board flat on the desk with `hal_imu()` read raw and printed as milli-g:
+
+| position | x (mg) | y (mg) | z (mg) | c = z/‖a‖ | angle from level |
+|---|---|---|---|---|---|
+| 1. Flat on desk, screen up | ~0 | −12 | **+1064** | 1.00 | 0° |
+| 2. Tipped up | −10 | −610 | **+850** | 0.81 | 36° |
+| 3. Vertical, screen facing user | −14 | −1027 | **+33** | 0.03 | 88° |
+
+Vector magnitude was **~1.03–1.06 g in all three positions** (1064 / 1046 /
+1028 mg) — i.e. consistently ~1.0 g regardless of orientation, which is an
+independent confirmation that `lis3dh_raw_to_mg()`'s scaling is right: had
+the plan's 16384 constant been used instead, every one of these magnitudes
+would have read low by the same 2.4%. The 6% *high* reading in position 1
+(1064 mg for what should be 1000 mg of gravity) is ordinary LIS3DH
+part-to-part sensitivity tolerance, not a scaling error — the datasheet does
+not promise better than a few percent here.
+
+**Z is the flat axis, sign positive.** `src/core/tilt.c` computes
+`c = az / ‖a‖` and treats `c >= TILT_FLAT_COS` as flat — it wants `az` to
+read close to +1 g when the board is level, which is exactly what Z does
+above (+1064 mg at 0°, falling to +33 mg at 88°). `hal_imu()`'s mapping is
+therefore a straight pass-through: `*ax = x`, `*ay = y`, `*az = z`, no
+negation, no axis swap. This does **not** transfer to the FreeWili 2 — its
+BMI323 sits in a different physical orientation on that board.
+
+Position 2 (36° from level) sits **inside** `tilt.c`'s hysteresis band
+(`TILT_FLAT_COS` 0.87 ≈ enter-flat within 29.5°, `TILT_LIFT_COS` 0.77 ≈
+leave-flat beyond 39.7°, `TILT_HOLD_MS` 600 ms to commit) — 36° is neither
+"enter flat" nor "leave flat," so at that angle the gate deliberately holds
+whichever zone it was already in rather than switching. That is expected
+behaviour from the existing FreeWili 2 hysteresis design, not a defect in
+this measurement.
+
 ## FreeWili OG — softkey label clipping (known, unfixed)
 
 *Derived from font metrics and confirmed in the SDL simulator (`tools/sim.ps1

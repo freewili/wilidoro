@@ -50,6 +50,12 @@ int main(void) {
     const bool audio_ok = i2s_audio_init(pio0, 2);
     if (!audio_ok) DIAG("[wilidoro] i2s init FAILED\n");
 
+    /* +/-2 g: tilt-to-pause cares about the direction of the 1 g gravity
+       vector, and the narrowest range gives the finest resolution for it. */
+    lis3dh_init();
+    const bool imu_ok = lis3dh_configure(LIS3DH_RANGE_2G);
+    if (!imu_ok) DIAG("[wilidoro] lis3dh init FAILED\n");
+
     lvgl_port_og_init();
     app_init();               /* builds screens, starts the tick timer */
     lv_mem_monitor_t mm0; lv_mem_monitor(&mm0);
@@ -71,8 +77,9 @@ int main(void) {
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
             lv_mem_monitor_t mm; lv_mem_monitor(&mm);
-            DIAG("[wilidoro] alive (panel=%s leds=%s audio=%s) heap free=%u max_used=%u frag_pct=%u\n",
+            DIAG("[wilidoro] alive (panel=%s leds=%s audio=%s imu=%s) heap free=%u max_used=%u frag_pct=%u\n",
                  panel_ok ? "ok" : "FAILED", leds_ok ? "ok" : "FAILED", audio_ok ? "ok" : "FAILED",
+                 imu_ok ? "ok" : "FAILED",
                  (unsigned)mm.free_size, (unsigned)mm.max_used, (unsigned)mm.frag_pct);
         }
         sleep_ms(2);

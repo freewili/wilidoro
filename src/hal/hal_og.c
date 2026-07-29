@@ -203,7 +203,44 @@ void hal_dvi_enable(bool on) { (void)on; }
 bool hal_lux(float *lux) { (void)lux; return false; }                   /* no ambient sensor */
 
 /* ---- IMU: Plan OG-B ---- */
-bool hal_imu(float *ax, float *ay, float *az) { (void)ax;(void)ay;(void)az; return false; }
+/* LIS3DH at +/-2 g. lis3dh_raw_to_mg() is the BSP's own host-tested
+   conversion (wiliOGbsp/bsp/display_cpu/sensors/lis3dh.h:204-214): it undoes
+   the register pair's left-justification with a sign-preserving >>6 before
+   scaling by the range's mg/digit figure, so it is correct for any range
+   without a hand-derived counts-per-g constant here. */
+
+/* WHICH AXIS IS "FLAT" IS BENCH-MEASURED, NOT DERIVABLE FROM THE DATASHEET.
+   Measured 2026-07-29 via the (now-removed) temporary DIAG in
+   src/target_og/main.c, reading milli-g in three positions:
+
+     position                          x      y      z    (mg)
+     1. flat on desk, screen up       ~0    -12   +1064
+     2. tipped up ~36 deg from level  -10   -610   +850
+     3. vertical, screen facing user  -14  -1027    +33
+
+   Z is the axis that reads +1 g when the board is level and falls toward 0
+   as the board is lifted -- that is the flat axis, and its sign is
+   POSITIVE. tilt.c computes c = az / |a| and treats c >= TILT_FLAT_COS as
+   flat, i.e. it wants az to read +1 g when level, which is exactly what Z
+   already does -- so the mapping below is a straight-through pass with no
+   negation and no axis swap. (Vector magnitude was ~1.03-1.06 g in all
+   three positions, independently confirming lis3dh_raw_to_mg()'s scaling
+   regardless of which axis turned out to be flat.)
+
+   The FreeWili 2's BMI323 sits in a different orientation, so this mapping
+   does not transfer to that board. This is the ONE place it lives; do not
+   "tidy" it (e.g. reorder/negate to "look right") without a board in hand
+   to re-confirm against. Full measurement, including angles and the
+   hysteresis-band note for position 2, is in docs/hardware-notes.md. */
+bool hal_imu(float *ax, float *ay, float *az) {
+    lis3dh_sample_t s;
+    lis3dh_motion_t m;
+    if (!lis3dh_process(LIS3DH_MOVE_THRESHOLD_DEFAULT, &s, &m)) return false;
+    *ax = (float)lis3dh_raw_to_mg(s.x, LIS3DH_RANGE_2G) / 1000.0f;
+    *ay = (float)lis3dh_raw_to_mg(s.y, LIS3DH_RANGE_2G) / 1000.0f;
+    *az = (float)lis3dh_raw_to_mg(s.z, LIS3DH_RANGE_2G) / 1000.0f;
+    return true;
+}
 
 /* ---- Beacon: Plan OG-D, over the inter-CPU link ---- */
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
@@ -214,7 +251,7 @@ hal_caps_t hal_caps(void) {
     c.buttons = true;
     c.leds    = true;
     c.audio   = true;
-    c.imu     = false;   /* Plan OG-B */
+    c.imu     = true;
     c.radio   = false;   /* Plan OG-D */
     return c;
 }
