@@ -98,8 +98,21 @@ bool hal_lux(float *lux) { (void)lux; return false; }   /* no ambient sensor on 
 bool hal_lux(float *lux) { *lux = s_lux; return true; }
 #endif
 
-/* Fake neighbor: emit one valid beacon frame ~every 4s so the Nearby screen has content. */
+/* hal_beacon_tx() is a no-op stand-in on both boards, matching hal_og.c and
+   hal_target.c, so it needs no per-board split. */
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
+#if defined(WILIDORO_BOARD_OG)
+/* Mirrors hal_og.c's stub exactly (Plan OG-D, not yet built): the OG's
+   CC1101 lives on the main CPU, reached over an inter-CPU link this HAL does
+   not implement yet, so hal_beacon_rx() always fails on real hardware. If
+   this synthesized a fake "JEN" neighbour here instead, the OG simulator
+   would show a populated Nearby list the real board cannot produce -- the
+   exact failure mode the hal_imu() stub above exists to avoid for tilt.
+   Update this branch and hal_og.c together when Plan OG-D lands the CC1101
+   work, not one without the other. */
+bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }
+#else
+/* Fake neighbor: emit one valid beacon frame ~every 4s so the Nearby screen has content. */
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
     static uint32_t last = 0; uint32_t now = SDL_GetTicks();
     if (now - last < 4000) return false;
@@ -109,6 +122,7 @@ bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
     beacon_pack(&m, wire);
     return true;
 }
+#endif
 
 #if !defined(WILIDORO_BOARD_OG)
 /* --- DVI: plain RAM, blitted into a second SDL window ---------------------

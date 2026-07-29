@@ -66,7 +66,7 @@ target_link_libraries(wilidoro_display PRIVATE
 target_link_options(wilidoro_display PRIVATE -Wl,--print-memory-usage)
 fwog_display_app(wilidoro_display
     VERSION 001
-    DESCRIPTION "Pomodoro timer: themed countdown, LED progress ring, chimes and tilt-to-pause")
+    DESCRIPTION "Pomodoro timer: themed countdown, LED progress ring and chimes")
 
 # ---- main CPU ----
 # In Plan A this app exists to carry the display image onto the board: a

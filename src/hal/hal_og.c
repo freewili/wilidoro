@@ -7,14 +7,7 @@
 #include "hal.h"
 #include "fwog_display.h"
 #include "pico/stdlib.h"
-#include "hardware/pio.h"
 #include "tone_synth.h"
-
-/* Must match i2s_audio_init(pio0, 2) in src/target_og/main.c -- see
-   audio_keep_silent() below for why this HAL needs to know the block/SM the
-   BSP claimed, not just call through i2s_audio.h's opaque API. */
-#define FWOG_I2S_PIO  pio0
-#define FWOG_I2S_SM   2u
 
 static void audio_keep_silent(void);   /* defined in the audio section below */
 
@@ -116,8 +109,12 @@ void hal_led_show(void) {
 static int16_t s_tone_buf[TONE_MAX_SAMPLES];
 
 /* A block of real silence, played on a loop whenever no note is sounding.
-   512 samples at 8 kHz is 64 ms, so hal_pump() re-arms it about 16 times a
-   second -- every sample is zero, so re-arming is inaudible. */
+   i2s_audio_start() always transfers a full I2S_AUDIO_BUFF_SIZE (1024
+   sample) buffer -- i2s_audio_fill_buffer() zero-pads whatever is left after
+   a shorter source is consumed -- so this 512-sample source arms one
+   1024-sample = 128 ms transfer at the driver's 8 kHz rate, and
+   audio_keep_silent() re-arms it about 8 times a second. Every sample is
+   zero, so re-arming is inaudible. */
 #define SILENCE_SAMPLES 512u
 static const int16_t s_silence_buf[SILENCE_SAMPLES];   /* .rodata, all zero */
 
@@ -148,18 +145,21 @@ void hal_audio_idle(void) {
    anywhere in that driver, so the state machine keeps running and keeps
    shifting whatever is left in its pipeline once that one zero word has
    gone through.
-   The fix belongs here, not in the read-only wiliOGbsp submodule: keep
-   topping up the SAME state machine's TX FIFO with zero words for as long
-   as i2s_audio_is_idle() reports true. FWOG_I2S_PIO/FWOG_I2S_SM are pio0/sm2
-   -- the exact block and SM i2s_audio_init(pio0, 2) claims in
-   src/target_og/main.c, not a guess. Guarded by pio_sm_is_tx_fifo_full() so
-   this never blocks, bounded to the FIFO's own depth so the loop cannot
-   spin, and gated on i2s_audio_is_idle() so it can never run while a real
-   DMA transfer is feeding the same FIFO -- interleaving zeros into that
-   would corrupt playback, not silence it. hal_pump() runs this every main-
-   loop iteration (~2 ms), including before the first tone ever plays, so the
-   bus is silenced from shortly after i2s_audio_init() at boot, not only
-   after the first note ends. */
+   The fix belongs here, not in the read-only wiliOGbsp submodule: whenever
+   i2s_audio_is_idle() reports true, re-arm a block of `const` (all-zero)
+   samples through the driver's normal i2s_audio_start() entry point -- the
+   same call hal_tone() uses for a real note, just fed silence instead. That
+   keeps the SM running continuously through DMA the whole time, which is
+   what removes both the rate race and the frame-phase problem the two
+   rejected approaches below hit: there is no separate top-up path racing the
+   DMA's own consumption rate, and the SM is never stopped or parked, so
+   there is no re-entry alignment to get wrong. hal_pump() calls
+   audio_keep_silent() every main-loop iteration (~2 ms), including before
+   the first tone ever plays, so the bus is silenced from shortly after
+   i2s_audio_init() at boot, not only after the first note ends. After a real
+   note ends, up to one loop iteration (~2 ms) can pass before this re-arms,
+   during which the SM re-shifts the last sample already in its pipeline --
+   ear-confirmed inaudible on hardware. */
 static void audio_keep_silent(void) {
     if (!i2s_audio_is_idle()) return;
     /* Re-arm the silence loop. Two earlier approaches were measured and
@@ -181,7 +181,7 @@ static void audio_keep_silent(void) {
 
        Letting the DMA play real zeros keeps the SM running continuously, which
        removes both problems at once -- no rate race, and no frame phase to get
-       wrong. It costs one 64 ms re-arm about 16 times a second and 16 KB/s of
+       wrong. It costs one 128 ms re-arm about 8 times a second and 16 KB/s of
        DMA bandwidth. */
     (void)i2s_audio_start(s_silence_buf, SILENCE_SAMPLES, true, false);
 }

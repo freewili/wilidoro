@@ -12,6 +12,8 @@
   #define UI_SOFTKEY_BTN_W   60
   #define UI_SOFTKEY_BTN_H   22
   #define UI_ARCADE_BAR_H    16
+  #define UI_ARCADE_BAR_Y    58
+  #define UI_ARCADE_SCORE_Y  82
   #define UI_FLIP_CARD       100
   #define UI_ROW_H           34
   #define UI_STEP_BTN_W      28
@@ -26,6 +28,8 @@
   #define UI_SOFTKEY_BTN_W   92
   #define UI_SOFTKEY_BTN_H   28
   #define UI_ARCADE_BAR_H    22
+  #define UI_ARCADE_BAR_Y    40
+  #define UI_ARCADE_SCORE_Y  78
   #define UI_FLIP_CARD       150
   #define UI_ROW_H           44
   #define UI_STEP_BTN_W      34
@@ -38,6 +42,13 @@
 /* Health-bar width: 400 on FW2 (480-80), 240 on the OG (320-80), matching
    the literal each build had before. */
 #define UI_ARCADE_BAR_W      (UI_W - 80)
+/* UI_ARCADE_BAR_Y (health-bar centre y-offset from the face centre) and
+   UI_ARCADE_SCORE_Y (score/level label centre y-offset from the face centre)
+   are set per-board above: 40/78 on FW2, matching the literals the build had
+   before; 58/82 on the OG. On the OG's shorter 212px face, the bar at the
+   FW2's offset (40) overlapped the status label (fixed y=130..148, unchanged
+   on both boards) by 10px; moving the bar to 58 and the score label to 82 in
+   step with it clears both the status label above and the face bottom below. */
 /* Flip-clock session-bar width: 300 on FW2, 140 on the OG. */
 #define UI_FLIP_BAR_W         (UI_W - 180)
 /* Flip card centre offset from the face centre: 84 on FW2, 59 on the OG,

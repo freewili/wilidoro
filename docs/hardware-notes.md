@@ -656,12 +656,19 @@ Two approaches were measured and **rejected**. Both are recorded in
    note comes out misaligned. The driver owns the program offset, so a clean
    re-entry point is not reachable from application code.
 
-**What works: let the DMA play real zeros.** `hal_pump()` re-arms a 64 ms
-block of `const` zeros whenever `i2s_audio_is_idle()`. The SM runs
-continuously, which removes both problems at once — no rate race, and no frame
-phase to get wrong. Costs ~16 KB/s of DMA bandwidth and no RAM. Verified on
-hardware: silent at idle, silent after a chime, and every chime correct across
-repeated presses.
+**What works: let the DMA play real zeros.** `hal_pump()` re-arms a block of
+`const` zeros whenever `i2s_audio_is_idle()`. The source buffer is 512
+samples, but `i2s_audio_start()` always transfers a full `I2S_AUDIO_BUFF_SIZE`
+(1024-sample) buffer — `i2s_audio_fill_buffer()` zero-pads the remainder — so
+at the driver's 8 kHz rate each re-arm is a 128 ms transfer, about 8 times a
+second, not 16. The SM runs continuously, which removes both problems at once
+— no rate race, and no frame phase to get wrong. Costs ~16 KB/s of DMA
+bandwidth (set by sample rate, not block size) and no RAM. After a real note
+ends, up to one `hal_pump()` iteration (~2 ms) can pass before the silence
+buffer re-arms, during which the SM re-shifts the last sample already in its
+pipeline — ear-confirmed inaudible on hardware. Verified on hardware: silent
+at idle, silent after a chime, and every chime correct across repeated
+presses.
 
 **A hypothesis that was wrong, recorded so nobody re-runs it.** The noise was
 first blamed on `stop_internal()`'s bare `dma_channel_abort()` calls failing to
@@ -694,6 +701,44 @@ rendered peak against that constant, so the test moves with it). If the tone
 quality itself is wrong, the fix lives in `sound.c`'s shared note tables —
 but since those are shared with the FreeWili 2, treat any change there as its
 own decision, not a quick tweak, and record the outcome here once judged.
+
+## FreeWili OG — softkey label clipping (known, unfixed)
+
+*Derived from font metrics and confirmed in the SDL simulator (`tools/sim.ps1
+-Board og`), not on a board.*
+
+`UI_SOFTKEY_BTN_W` (`src/ui/ui.h`) is **60 px** on the OG, and `ui_softkey_bar()`
+in `src/ui/ui.c` centres each label with `lv_obj_center(lbl)`, so any label
+wider than the button clips symmetrically at both ends rather than just
+running off one side.
+
+Measured advance widths in `lv_font_montserrat_16` (the softkey label font on
+both boards):
+
+| label | width | fits 60px? |
+|---|---|---|
+| "Resume" | 67.0 px | **no — clips** |
+| "Dismiss" | 63.0 px | **no — clips** |
+| "Default" | 60.1 px | **no — clips** |
+| "Nearby" | 58.8 px | yes, just |
+| every other softkey label | ≤ 49.8 px | yes |
+
+Two of the three clipping labels are reachable on the OG: **"Resume"**
+(`screen_timer.c`'s paused state) and **"Dismiss"** (the alarm state). The
+third, **"Default"**, is not reachable on this board — OG Settings is driven
+entirely from the arrow pad (see `screen_settings_softkey()`), which has no
+"Default" column.
+
+**Widening the buttons is not available as a fix.** `5 * UI_SOFTKEY_BTN_W` =
+300 px already very nearly fills the softkey bar's ~312 px content box (`UI_W`
+320, less the bar's own padding and border) — there is no room left to grow
+any button without shrinking the gaps between them to nothing.
+
+The available fixes, neither applied in this pass: switch the softkey bar to
+a 14 px font (would affect both boards, since the font choice is currently
+shared), or shorten the three offending words. **This is recorded as a known,
+unfixed defect** — the label text and `UI_SOFTKEY_BTN_W` are unchanged in this
+branch.
 
 ---
 

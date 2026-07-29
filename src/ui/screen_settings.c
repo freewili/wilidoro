@@ -69,9 +69,15 @@ static void adj_event(lv_event_t *e) {
 static lv_obj_t *add_row(const char *name, int which) {
     lv_obj_t *row = lv_obj_create(s_list);
 #if defined(WILIDORO_BOARD_OG)
-    s_row_obj[s_row_count] = row;
-    s_row_which[s_row_count] = which;
-    s_row_count++;
+    /* N_SET_ROWS sizes s_row_obj/s_row_which; a 9th add_row() call would
+       overrun them and silently corrupt whichever statics follow. Refuse the
+       write instead -- the row still renders (added to s_list above), it
+       just will not be reachable from the arrow-pad's Up/Down nav. */
+    if (s_row_count < N_SET_ROWS) {
+        s_row_obj[s_row_count] = row;
+        s_row_which[s_row_count] = which;
+        s_row_count++;
+    }
 #endif
     lv_obj_set_size(row, lv_pct(100), UI_ROW_H);
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);   /* let the LIST scroll, not the row */

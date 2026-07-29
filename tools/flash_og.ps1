@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent
 $app  = if ($args.Count -ge 1) { $args[0] } else { "wilidoro_main" }
 
-if ($app -like "*_display") {
+if ($app -like "*_display*") {
     Write-Error @"
 Refusing to flash '$app'.
 

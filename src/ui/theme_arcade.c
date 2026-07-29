@@ -47,7 +47,7 @@ static void ar_build(lv_obj_t *face) {
     /* health-bar progress */
     s_bar = lv_bar_create(face);
     lv_obj_set_size(s_bar, UI_ARCADE_BAR_W, UI_ARCADE_BAR_H);
-    lv_obj_align(s_bar, LV_ALIGN_CENTER, 0, 40);
+    lv_obj_align(s_bar, LV_ALIGN_CENTER, 0, UI_ARCADE_BAR_Y);
     lv_bar_set_range(s_bar, 0, 1000);
     lv_bar_set_value(s_bar, 1000, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(s_bar, lv_color_hex(AR_PANEL), LV_PART_MAIN);
@@ -60,7 +60,7 @@ static void ar_build(lv_obj_t *face) {
     s_score = lv_label_create(face);
     lv_obj_set_style_text_color(s_score, lv_color_hex(AR_GREEN), 0);
     lv_obj_set_style_text_font(s_score, &lv_font_montserrat_16, 0);
-    lv_obj_align(s_score, LV_ALIGN_CENTER, 0, 78);
+    lv_obj_align(s_score, LV_ALIGN_CENTER, 0, UI_ARCADE_SCORE_Y);
     lv_label_set_text(s_score, "LVL 1  x0");
 }
 

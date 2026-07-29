@@ -59,7 +59,9 @@ The **FreeWili OG** (FreeWili 1 / Classic) is a second, supported board target: 
 
 **Working today (Plan A):** the Neon Arc theme, relaid out for 320×240; the 5 physical buttons driving the same softkey columns as the FW2; the panel itself, including the bounded ST7789 init the display CPU must run on every boot.
 
-**Deferred to later plans:** the LEDs, audio, tilt-to-pause, the sub-GHz beacon, the two remaining themes, and the Settings/Nearby screens. `hal_caps()` already reports these gaps honestly (`leds=false`, `audio=false`, etc.), but nothing on the OG's timer face surfaces that yet — this repo tries to be honest about the gap between "built" and "wired up".
+**Also built (Plans OG-B and OG-C), but only ever exercised in the SDL simulator, never on a board:** the 7-LED WS2812 ring and synthesized chimes over I2S (Plan OG-B tasks 1-3); all three themes (Neon Arc, Retro Tomato Arcade, Warm Flip Clock) relaid out for 320×240, live theme switching, and the Settings and Nearby screens driven entirely from the five-button arrow pad (Plan OG-C). `hal_caps()` now reports `leds=true` and `audio=true` on the OG, since both are real.
+
+**Deferred to later plans:** tilt-to-pause (Plan OG-B task 4 — `hal_imu()` hard-returns `false`) and the sub-GHz beacon (Plan OG-D — `hal_beacon_rx()` hard-returns `false`).
 
 ### Building and flashing the OG
 
@@ -113,7 +115,7 @@ powershell -File tools/sim.ps1 -Board og
 
 - **No DVI mirror window.** The OG has no HSTX block, so `sim_dvi_create()`/`sim_dvi_present()` are skipped entirely, same as the real board never running `dvi_view.c`.
 - **7 LEDs, not 16** — `hal_led_count()` returns the OG's real WS2812 chain length.
-- **The capability profile matches `hal_og.c`**: `hal_caps()` reports no light sensor and no radio, same as the real board (`hal_lux()` also returns `false`). IMU and beacon reception stay off pending later plans, exactly as on hardware.
+- **The capability profile matches `hal_og.c`**: `hal_caps()` reports no light sensor and no radio, same as the real board (`hal_lux()` also returns `false`). `hal_imu()` and `hal_beacon_rx()` both hard-return `false` in OG mode too, so the fake tilt and the fake "JEN" neighbour the FW2 sim uses to exercise those screens are off here — Nearby stays empty and Tilt-to-pause stays inert, exactly as on hardware, pending Plans OG-B task 4 and OG-D.
 - **The `-` / `=` fake-tilt keys do nothing in OG mode.** `hal_imu()` always returns `false` there, mirroring `hal_og.c`'s stub for the not-yet-wired-up LIS3DH — so even if Tilt-to-pause is toggled on in Settings (the toggle itself isn't gated, to keep that shared code untouched), it stays inert, exactly as on real OG hardware. The keys still drive the fake IMU normally on the FW2 sim.
 - **The sim is slightly more capable than the OG hardware in one respect**: LVGL's SDL build always provides a mouse pointer indev, so in OG mode you can click the on-screen `+`/`-` buttons with the mouse in addition to using the `Z X C V B` arrow pad. The real OG has no touchscreen and no pointer device at all — only the arrow pad works there. This is a simulator fidelity gap, not a bug.
 
