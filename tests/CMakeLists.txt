@@ -64,3 +64,18 @@ target_include_directories(test_tone_synth PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} $
 target_compile_options(test_tone_synth PRIVATE -Wall -Wextra)
 target_link_libraries(test_tone_synth m)
 add_test(NAME test_tone_synth COMMAND test_tone_synth)
+
+# Plan OG-D. Links the BSP's REAL framing (link_frame.c + crc.c, both pure C
+# with no SDK dependency) so the round trip is genuine rather than mocked.
+set(LINK ${CMAKE_CURRENT_SOURCE_DIR}/../src/link)
+set(BSP  ${CMAKE_CURRENT_SOURCE_DIR}/../wiliOGbsp/bsp)
+add_executable(test_wilidoro_link test_wilidoro_link.c
+    ${LINK}/wilidoro_link.c
+    ${BSP}/common/link/link_frame.c
+    ${BSP}/common/crc.c
+    ${CORE}/beacon.c)
+target_include_directories(test_wilidoro_link PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${CORE} ${LINK} ${BSP})
+target_compile_options(test_wilidoro_link PRIVATE -Wall -Wextra)
+target_link_libraries(test_wilidoro_link m)
+add_test(NAME test_wilidoro_link COMMAND test_wilidoro_link)

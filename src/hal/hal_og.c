@@ -6,9 +6,13 @@
  * spend a softkey column on Back instead. */
 #include "hal.h"
 #include "fwog_display.h"
+#include "wilidoro_link.h"
+#include "common/link/link_uart.h"
+#include "common/link/link_frame.h"
 #include "pico/stdlib.h"
 #include "tone_synth.h"
 #include "power/ship_mode.h"   /* FWOG_SHIP_HOLD_MS, for FWOG_POWER_BAR_DELAY_MS's threshold */
+#include <string.h>
 
 static void audio_keep_silent(void);   /* defined in the audio section below */
 
@@ -17,6 +21,36 @@ static hal_btn_t s_queue[BTN_QUEUE_LEN];
 static uint8_t   s_head, s_tail;
 static bool      s_power_armed;
 static bool      s_imu_ok;   /* set by hal_init(); see hal_caps() below */
+
+/* ---- Beacon state (Plan OG-D). Declared here rather than beside
+   hal_beacon_tx/rx at the foot of the file because hal_init() below brings the
+   link up and hal_caps() reads the latched status. See that section for what
+   each of these means. ----
+
+   fwog_link_rx_t embeds a 4160-byte payload buffer, so s_link_rx is 4168 bytes
+   -- the single largest allocation Plan OG-D adds to this CPU. Against the
+   Plan OG-A baseline of 152,188 B of 264 KB that is 1.6 %. */
+static fwog_link_rx_t s_link_rx;
+static bool           s_link_up;
+
+static uint8_t  s_last_tx[BEACON_WIRE_LEN];
+static bool     s_have_tx;
+static uint32_t s_last_tx_ms;
+static bool     s_show_self;          /* Nearby's Self softkey; default hidden */
+
+static wd_link_status_t s_status;
+static bool             s_status_valid;
+static uint32_t         s_status_ms;
+
+/* Bytes drained per hal_beacon_rx() call. app_poll() calls it every 100 ms, so
+   this is several whole frames' worth against a beacon that repeats every 20 s
+   -- and short enough that a saturated or babbling link cannot starve the LVGL
+   tick. */
+#define WD_DRAIN_BUDGET 256u
+
+/* How long a 0x42 stays believed. Main resends every 5 s, so this tolerates
+   two consecutive losses before hal_caps().radio goes false. */
+#define WD_STATUS_STALE_MS 15000u
 
 /* This board has no ambient-light sensor, so hal_lux() always returns false
    (see below) and app.c's sensor_cb auto-dim block -- the only caller of
@@ -100,6 +134,14 @@ void hal_init(void) {
        is written to report false forever in that case, not garbage. */
     lis3dh_init();
     s_imu_ok = lis3dh_configure(LIS3DH_RANGE_2G);
+
+    /* The display BOOTLOADER deinits the link before jumping here (bl_jump.c),
+       so the application must bring it back up itself -- board_init() does not.
+       apps/bench_display/main.c:981 is the reference for these two lines. */
+    s_link_up = fwog_link_uart_init(FWOG_LINK_BAUD);
+    fwog_link_rx_init(&s_link_rx);
+    s_show_self = false;
+    if (!s_link_up) DIAG("[wilidoro] link uart init FAILED -- no beacon\n");
 }
 
 /* Once per main-loop iteration. fwog_power_poll() is THE button read: calling
@@ -379,9 +421,67 @@ bool hal_imu(float *ax, float *ay, float *az) {
     return true;
 }
 
-/* ---- Beacon: Plan OG-D, over the inter-CPU link ---- */
-void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
-bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }
+/* ---- Beacon: Plan OG-D, over the inter-CPU link ----
+ *
+ * This CPU has no radio. hal_beacon_tx/rx are messages to the main CPU, which
+ * owns both CC1101s. Nothing above the HAL knows the difference: beacon_rx.c,
+ * the neighbour table and the Nearby screen are untouched. */
+
+void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) {
+    if (!s_link_up) return;
+    memcpy(s_last_tx, wire, BEACON_WIRE_LEN);
+    s_last_tx_ms = hal_now_ms();
+    s_have_tx = true;
+    uint8_t p[sizeof(wd_link_beacon_t)];
+    const size_t n = wd_link_build_beacon(p, sizeof p, WD_LINK_MSG_BEACON_TX, wire);
+    if (n != 0u) (void)fwog_link_uart_send_frame(p, n);
+}
+
+bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
+    if (!s_link_up) return false;
+    uint8_t b;
+    size_t len = 0;
+    for (unsigned i = 0; i < WD_DRAIN_BUDGET && fwog_link_uart_read(&b); i++) {
+        if (!fwog_link_rx_byte(&s_link_rx, b, &len)) continue;
+        switch (wd_link_type(s_link_rx.buf, len)) {
+        case WD_LINK_MSG_STATUS: {
+            wd_link_status_t st;
+            if (!wd_link_parse_status(s_link_rx.buf, len, &st)) break;
+            /* On CHANGE only -- a healthy board must not emit a line every
+               5 s. This is the only consumer of the RSSI and LQI fields, and
+               it exists so those numbers are reachable when the display's USB
+               console is the one plugged in rather than main's. */
+            if (!s_status_valid || memcmp(&st, &s_status, sizeof st) != 0) {
+                DIAG("[wilidoro] radio cs0=%d cs1=%d selftest=%u rssi=%d lqi=%u crc=%d\n",
+                     (st.flags & WD_STATUS_CS0_UP) ? 1 : 0,
+                     (st.flags & WD_STATUS_CS1_UP) ? 1 : 0,
+                     (unsigned)st.selftest, (int)st.rssi_dbm,
+                     (unsigned)(st.lqi & 0x7Fu), (st.lqi & 0x80u) ? 1 : 0);
+            }
+            s_status = st;
+            s_status_valid = true;
+            s_status_ms = hal_now_ms();
+            break;
+        }
+        case WD_LINK_MSG_BEACON_RX: {
+            uint8_t frame[BEACON_WIRE_LEN];
+            if (!wd_link_parse_beacon(s_link_rx.buf, len, frame)) break;
+            if (!s_show_self &&
+                wd_link_is_echo(s_have_tx, s_last_tx, s_last_tx_ms,
+                                hal_now_ms(), frame)) {
+                break;                  /* our own echo: drop, keep draining */
+            }
+            memcpy(wire, frame, BEACON_WIRE_LEN);
+            return true;
+        }
+        default:
+            break;                       /* not ours -- the BSP's, or noise */
+        }
+    }
+    return false;
+}
+
+void hal_beacon_show_self(bool show) { s_show_self = show; }
 
 hal_caps_t hal_caps(void) {
     hal_caps_t c = {0};   /* light, dvi stay false: no hardware on this board */
@@ -389,6 +489,14 @@ hal_caps_t hal_caps(void) {
     c.leds    = true;
     c.audio   = true;
     c.imu     = s_imu_ok;   /* true iff lis3dh_configure() actually found the part -- see hal_init() */
-    c.radio   = false;   /* Plan OG-D */
+    /* True only while main is actually saying so. Requiring BOTH radios is
+       deliberate: a dead CS1 means Nearby can never populate, and a dead CS0
+       means we are invisible to everyone else -- either way "radio: ok" on the
+       Settings screen would be a lie. Goes false on its own if the main CPU
+       dies or the link breaks, not only if a radio is absent. */
+    c.radio = s_status_valid
+           && (uint32_t)(hal_now_ms() - s_status_ms) <= WD_STATUS_STALE_MS
+           && (s_status.flags & (WD_STATUS_CS0_UP | WD_STATUS_CS1_UP))
+              == (WD_STATUS_CS0_UP | WD_STATUS_CS1_UP);
     return c;
 }

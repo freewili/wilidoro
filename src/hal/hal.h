@@ -54,6 +54,12 @@ bool hal_lux(float *lux);
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]);
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]);
 
+/* Show or hide this device's own beacon echoing back. OG only: its receiver
+   sits centimetres from its transmitter, so it hears everything it sends, and
+   would otherwise list itself as a neighbour. Default is HIDDEN. A no-op on
+   boards that cannot hear themselves. */
+void hal_beacon_show_self(bool show);
+
 /* Which features are live this build. Every backend reports these honestly,
    but the only consumer is screen_settings.c, which renders them as text --
    there are no crossed-out icons on the timer face, on either board. */

@@ -80,9 +80,14 @@ int main(void) {
         if (time_reached(next_beat)) {
             next_beat = make_timeout_time_ms(1000);
             lv_mem_monitor_t mm; lv_mem_monitor(&mm);
-            DIAG("[wilidoro] alive (panel=%s leds=%s audio=%s imu=%s) heap free=%u max_used=%u frag_pct=%u\n",
+            /* radio= is hal_caps().radio, i.e. exactly what the Settings screen
+               renders: "main has said both CC1101s are up within the last
+               15 s". It belongs on this line for the same reason imu does --
+               and it is the only way to read that verdict without the panel. */
+            DIAG("[wilidoro] alive (panel=%s leds=%s audio=%s imu=%s radio=%s) heap free=%u max_used=%u frag_pct=%u\n",
                  panel_ok ? "ok" : "FAILED", leds_ok ? "ok" : "FAILED", audio_ok ? "ok" : "FAILED",
                  hal_caps().imu ? "ok" : "FAILED",
+                 hal_caps().radio ? "ok" : "FAILED",
                  (unsigned)mm.free_size, (unsigned)mm.max_used, (unsigned)mm.frag_pct);
         }
         sleep_ms(2);

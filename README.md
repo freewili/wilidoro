@@ -18,7 +18,7 @@ Bare-metal C11 + Pico SDK + LVGL 9 on top of [`wilibsp`](https://github.com/free
 - **A big-room DVI display** — 640×480p60 over the RP2350's HSTX block, showing a countdown legible across a room, in the active theme's colours.
 - **A sub-GHz focus beacon** — broadcasts your state at 433.92 MHz and lists nearby wilidoros on a Nearby screen.
 - **An SDL simulator** that runs the same UI, app and core code on the desktop, with keyboard stand-ins for buttons, light and tilt.
-- **11 host test binaries** over the hardware-free logic, run by CTest in about a second.
+- **13 host test binaries** over the hardware-free logic, run by CTest in about a second.
 
 ## Screenshots
 
@@ -63,7 +63,9 @@ The **FreeWili OG** (FreeWili 1 / Classic) is a second, supported board target: 
 
 **Also built (Plan OG-C), but only ever exercised in the SDL simulator, never on a board:** all three themes (Neon Arc, Retro Tomato Arcade, Warm Flip Clock) relaid out for 320×240, live theme switching, and the Settings and Nearby screens driven entirely from the five-button arrow pad. `hal_caps()` now reports `leds=true` and `audio=true` on the OG, since both are real.
 
-**Deferred to a later plan:** the sub-GHz beacon (Plan OG-D — `hal_beacon_rx()` hard-returns `false`).
+**Also built (Plan OG-D), and the radio half hardware-verified:** the sub-GHz beacon. The display CPU has no radio, so `hal_beacon_tx/rx` are messages over the inter-CPU link to the main CPU, which owns both CC1101s at 433.92 MHz — `CS0` transmits, `CS1` listens. A boot self-test sends a real beacon frame between the two on-board radios **over the air** and passes: RSSI −54 dBm, LQI 0–2, CRC OK across four boots. `hal_caps().radio` is not a constant — it means "the main CPU has reported both radios up within the last 15 s", measured to go false 12 s after the main CPU is removed.
+
+What has **not** been seen: anything on the panel. Nearby's contents and its `+Self`/`-Self` toggle are unobserved — see the checklist in [`docs/hardware-notes.md`](docs/hardware-notes.md). The beacon is off by default (it broadcasts your name and state unauthenticated), so Settings has to enable it first.
 
 ### Building and flashing the OG
 
@@ -117,7 +119,8 @@ powershell -File tools/sim.ps1 -Board og
 
 - **No DVI mirror window.** The OG has no HSTX block, so `sim_dvi_create()`/`sim_dvi_present()` are skipped entirely, same as the real board never running `dvi_view.c`.
 - **7 LEDs, not 16** — `hal_led_count()` returns the OG's real WS2812 chain length.
-- **The capability profile matches `hal_og.c`**: `hal_caps()` reports no light sensor and no radio, same as the real board (`hal_lux()` also returns `false`). `hal_beacon_rx()` hard-returns `false` in OG mode too, so the fake "JEN" neighbour the FW2 sim uses to exercise Nearby is off here — Nearby stays empty, exactly as on hardware, pending Plan OG-D.
+- **No radio, and no inter-CPU link.** The simulator models neither, so `hal_caps()` reports `radio=false` and `hal_beacon_rx()` returns `false` in OG mode — the fake "JEN" neighbour the FW2 sim uses to exercise Nearby is off here and Nearby stays empty. This is **no longer** "same as the real board": since Plan OG-D the real OG does have a working beacon. It is a limit of the simulator, not of the hardware. Nearby's `+Self` toggle renders and flips but has nothing to reveal.
+- **No light sensor** — `hal_lux()` returns `false`, matching `hal_og.c`.
 - **The `-` / `=` fake-tilt keys now work in OG mode, same as on the FW2 sim.** `hal_imu()` shares one fake-tilt implementation across both boards' simulators now that tilt-to-pause has landed on real OG hardware (`hal_og.c`'s LIS3DH driver) as well as the FW2's — toggle Tilt-to-pause on in Settings, hold `-`/`=` past the hysteresis band, and a running session actually pauses/resumes, exercising the same shared `tilt.c` gate real hardware drives.
 - **The sim is slightly more capable than the OG hardware in one respect**: LVGL's SDL build always provides a mouse pointer indev, so in OG mode you can click the on-screen `+`/`-` buttons with the mouse in addition to using the `Z X C V B` arrow pad. The real OG has no touchscreen and no pointer device at all — only the arrow pad works there. This is a simulator fidelity gap, not a bug.
 
@@ -153,7 +156,9 @@ This repo tries to be honest about the difference between "host-tested" and "see
 
 **Confirmed on hardware:** the display and touch, all three themes plus live theme switching, the LED brightness ceiling, the audio chimes (level-checked by ear and by a Goertzel analysis of a microphone capture), the DVI output on a projector at the board's default 250 MHz, and tilt-to-pause.
 
-**Not confirmed:** the sub-GHz beacon. The radio brings up and the firmware runs clean alongside it, but over-the-air *reception* has never been demonstrated on this hardware by anyone — proving it needs a second transmitter. A boot self-test transmits a frame and re-captures it on the same pad, which exercises the whole chain except the RF air path; its result is logged over RTT. The beacon is off by default.
+**Not confirmed on the FreeWili 2:** its sub-GHz beacon. The radio brings up and the firmware runs clean alongside it, but over-the-air *reception* has never been demonstrated on that board by anyone — proving it needs a second transmitter. Its boot self-test transmits a frame and re-captures it on the same pad, which exercises the whole chain except the RF air path; its result is logged over RTT. The beacon is off by default.
+
+**Confirmed on the FreeWili OG, and this is the difference:** the OG has two CC1101s, so its self-test transmits on one and receives on the other **through the air** — the proof the FW2's same-pad loopback could never be. It passes (RSSI −54 dBm, LQI 0–2, CRC OK). What is still unconfirmed there is the *screen*: nobody has watched Nearby populate.
 
 ## Design docs
 

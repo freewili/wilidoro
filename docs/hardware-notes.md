@@ -885,3 +885,206 @@ chained I2S TX DMA`), and the lack of HSTX framebuffer sizing was fixed in
 to them (`833c1bd` and `092f5ca` respectively) — that pattern is the template
 for any future BSP-bug fix. Ask before opening upstream PRs for new tuning-style
 notes like the ones in this file, but bugs get fixed upstream as a matter of course.
+
+---
+
+## FreeWili OG — the sub-GHz beacon (Plan OG-D)
+
+Built 2026-07-29 and **partly hardware-verified the same day.** Checklist items
+1-3 below PASS on a real board. Items 4-8 need a human looking at the panel and
+have **not** been done. See "What the board actually said" for the numbers and
+for the two defects the board found.
+
+Design: `docs/superpowers/specs/2026-07-29-wilidoro-OG-D-beacon-design.md`.
+
+The display CPU has no radio, so `hal_beacon_tx/rx` are messages over the
+inter-CPU UART link (`0x40` transmit, `0x41` received, `0x42` radio status).
+The main CPU owns both CC1101s at 433.92 MHz: `CS0` transmits, `CS1` sits
+permanently in RX.
+
+### 433.92 MHz needs no expander traffic
+
+`fwog_ioexp_init()`, inside the display CPU's `board_init()`, comes up at
+`FWOG_ANT_400MHZ` for **both** radios. 433.92 MHz is inside that path, so this
+plan sends no PCAL6416 traffic and never calls `fwog_io_dir_apply()` — whose
+`FWOG_IO_ERR_FPGA_VERIFY` investigation is still open and is not this feature's
+problem.
+
+Anything that retunes to another band must also steer the expander
+(`fwog_ioexp_link_set_antennas()`, which changes only the two antenna fields and
+leaves the nine shifter directions alone) or it keys the radios into the wrong
+antenna path.
+
+### Touching this link costs 8.4 KB of RAM, not 4 KB
+
+Measured on `wilidoro_display`: 162,940 B → **171,316 B** (62.16 % → 65.35 % of
+256 KB) when `hal_og.c` gained the link. The design doc budgeted about 4 KB and
+that was half the truth:
+
+- `s_link_rx` in `hal_og.c` — 4,168 B. Ours, expected; `fwog_link_rx_t` embeds a
+  4,160-byte payload buffer.
+- `frame.0` in the BSP — 4,165 B. **Not obvious from the call site.**
+  `fwog_link_uart_send_frame()` (`link_uart.c:85`) keeps its own static framing
+  buffer sized for the maximum 4,160-byte payload, and it lands in your image
+  the moment you call that function once.
+
+Kept as-is: ~89 KB stays free, and the documented helper is worth more than 4 KB
+nothing needs. **The escape hatch, if RAM ever gets tight:** call
+`fwog_link_encode()` into a small local and then `fwog_link_uart_write()`
+directly — wilidoro's largest link payload is 17 bytes, so a 22-byte buffer
+covers it and the BSP's 4 KB static never gets linked in.
+
+### Softkey label widths, measured
+
+Measured against LVGL's own metrics (`lv_text_get_width`, Montserrat 16), not
+estimated, while checking that the new `Self` label fits. This pins the
+clipping issue recorded above at exact numbers:
+
+| Label | Width | 60 px button (OG) |
+|---|---|---|
+| `-Self` | 36 px | fits |
+| `+Self` | 39 px | fits |
+| `Self on` / `Self off` | 55 / 56 px | nominally fits, but only 4 px clear of the known-bad case — avoided |
+| `Save` | 38 px | fits |
+| `Back` | 41 px | fits |
+| `Dismiss` | **62 px** | clips |
+| `Resume` | **68 px** | clips |
+
+`Dismiss` and `Resume` remain unfixed — out of scope for OG-D.
+
+### On-device beacon checklist
+
+Flash with `powershell -File tools/flash_og.ps1`. Never `fw flash
+wilidoro_display`.
+
+1. **PASSED 2026-07-29. The main console reports the self-test.** Repeated once
+   a second for the first 10 s:
+   `[wilidoro] radio cs0=ok cs1=ok selftest=pass rssi=-46 lqi=0 crc=1`.
+   Those numbers are the measured answer to whether two antennas centimetres
+   apart saturate rather than demodulate. They do not.
+   `selftest=FAIL transmitter never keyed` and `selftest=DEGRADED keyed but
+   heard nothing` are different faults: the first is a synthesiser that will not
+   lock, the second is an RF path that carried nothing. That distinction is
+   deliberate — collapsing the two is what made the BSP's 315 MHz result
+   undiagnosable on first measurement.
+2. **PASSED 2026-07-29. The display knows.** Its 1 Hz heartbeat carries
+   `radio=ok`, which is `hal_caps().radio` — so the whole `0x42` path is
+   proven: main built it, the link carried it, `hal_og.c` parsed it. The
+   change-only detail line (RSSI/LQI) also prints on that console.
+3. **PASSED 2026-07-29. The liveness window closes.** `fw bootsel --cpu main`
+   took the main CPU away and the display flipped to `radio=FAILED` at
+   **t+12 s**, inside the 15 s window. Settings renders the same value.
+4. **NOT DONE — needs the panel. FIRST TURN THE BEACON ON.** `beacon_on`
+   defaults to **false** (`app_model.c:15`), deliberately — it broadcasts the
+   configured name and focus state unauthenticated every ~20 s. Nothing
+   transmits until you enable it, so items 5-6 below will show an empty list
+   and look broken if you skip this.
+
+   From the timer face: **red** → Settings. Settings uses the arrow-pad layout
+   (grey=Up, yellow=−, green=OK, blue=+, red=Down). `Beacon` is the **5th**
+   row, so **red ×4** to reach it, **blue** to turn it on, **green** to apply
+   and return.
+
+   *Then* the real version of this check: with the beacon ON and `Self` OFF,
+   Nearby must **stay empty**. That is the echo drop working — the device is
+   transmitting every ~20 s and hearing itself every time, and discarding it.
+   (With the beacon off this check proves nothing.)
+5. **NOT DONE — needs the panel. Press the self toggle on Nearby (column 4 = red).**
+   The label itself flips `+Self` <-> `-Self` on the press, so the button
+   confirms the state immediately rather than making you wait a beacon period
+   for the list to catch up. `+Self` means self is currently hidden.
+
+   From the timer face, **blue** → Nearby. Within one beacon period (~20 s,
+   with ±3 s jitter) the name `WILI` — the default — must appear, drawn in the
+   theme accent colour. This is the whole chain proven end to end on one board:
+   `beacon_pack` → `0x40` → CS0 keys → over the air → CS1 → `0x41` →
+   `beacon_unpack` → a row on screen.
+6. **NOT DONE — needs the panel. Press `Self` again.** The row must disappear
+   within `neighbor_expire()`'s timeout.
+7. **NOT DONE — needs the panel. Confirm `Self` renders cleanly.** Measured at
+   30 px in a 60 px button above, so this should be comfortable — but nobody
+   has looked at it on the panel.
+8. **NOT DONE — needs the panel. Turn the beacon back off in Settings.** Nearby
+   must stop gaining rows.
+
+### What the board actually said (2026-07-29)
+
+**Fixed-length packet mode does not work with this driver.** Not a tuning
+choice — a hard incompatibility, found on the first flash:
+
+```
+radio cs0=ok cs1=ok selftest=DEGRADED heard but payload wrong rssi=-46 lqi=1 crc=1
+```
+
+`cc1101_send_packet()` **unconditionally writes a length byte into the TX FIFO**
+before the payload (`cc1101.c:709`), because it was ported from a reference that
+only ever used variable-length mode. There is no flag to suppress it. In
+fixed-length mode with `PKTLEN=16` the radio therefore transmits
+`[0x10, wire[0..14]]` and silently drops `wire[15]`. The hardware CRC still
+passes — the frame is self-consistent, just shifted by one — so the symptom is
+the confusing pair `crc=1` **and** "payload wrong".
+
+**Anyone using this driver must use variable length** (`cc1101_set_length_config
+(r, 1u)`), leave `PKTLEN` at the bringup bank's default (in variable mode it is
+a maximum, not a length), and read the payload from **offset 1**. The send call
+needs no change at all: the driver's own length byte is correct there.
+
+> The OG-D spec originally proposed a fallback that transmitted a 17-byte
+> buffer with a manual `0x10` prefix. **That would have prepended the length
+> byte twice.** Corrected in the spec; recorded here because the mistake is an
+> easy one to repeat.
+
+After the fix, on the board:
+
+```
+radio cs0=ok cs1=ok selftest=pass rssi=-46 lqi=0 crc=1
+```
+
+**The near-field question is answered, with numbers.** The og-port design ranked
+"two antennas inches apart may saturate the receiver rather than cleanly
+demodulating" as risk 5. At −30 dBm across the two on-board antennas the
+receiver reports **RSSI −46 dBm, LQI 0** (0 is the best value the part reports)
+and a passing CRC. Not saturated, not marginal — clean. **Risk retired by
+measurement.**
+
+**The `0x42` liveness window works.** Measured directly: with the display
+running, `fw bootsel --cpu main` was used to take the main CPU away, and the
+display's own heartbeat flipped from `radio=ok` to `radio=FAILED` at **t+12 s**,
+inside the 15 s design window. This is the failure a hardcoded
+`caps.radio = true` could never have reported, and it is the whole reason the
+`0x42` opcode exists.
+
+**A boot-time-only `DIAG` is invisible; this cost a whole flash cycle.** The
+self-test line ran once inside the window before USB CDC enumerates, and
+`pico_stdio_usb` dropped it — the single most important line in the feature was
+missing from *both* consoles. `main.c`'s "main alive" line and
+`target_og/main.c`'s heartbeat both already repeat for exactly this reason. Both
+now carry the radio state; the full RSSI/LQI line repeats for the first 10 s.
+
+**Catching that 10 s window from the host is genuinely awkward.** The display
+image transfer runs first and can eat most of it. Open the CDC port in a tight
+retry loop immediately after `flash_og.ps1` returns rather than sleeping for a
+fixed interval, or you will land in steady state and see only `radio=ok`.
+
+**LVGL heap on the display, with the beacon live:** `free=35188 max_used=28604
+frag_pct=1`. The extra ~8 KB of link buffers did not disturb it.
+
+### Two things still need a second board
+
+Neither is done, and neither can be faked by one device:
+
+1. **Two distinct names coexisting** in the neighbour table.
+2. **`neighbor_expire()` aging a real entry out** when another device leaves.
+
+### Known limitation: the simulator
+
+In the **OG simulator**, Nearby's `Self` softkey renders and toggles but has no
+observable effect — `hal_sim.c` models neither the inter-CPU link nor the
+radios, so there is no echo to hide, and Nearby stays empty. Teaching the
+simulator to model the beacon was explicitly out of scope for Plan OG-D.
+
+Note for anyone reading the OG-D spec: its Non-goals section claims `hal_sim.c`
+"synthesises a fake JEN neighbour every 4 s in OG mode". **That is wrong** —
+inherited from a stale review note. The OG branch of `hal_beacon_rx()` in
+`hal_sim.c` has always returned `false`; the JEN fake is FW2-only. The spec has
+been corrected.

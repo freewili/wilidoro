@@ -98,14 +98,18 @@ bool hal_lux(float *lux) { *lux = s_lux; return true; }
    hal_target.c, so it needs no per-board split. */
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
 #if defined(WILIDORO_BOARD_OG)
-/* Mirrors hal_og.c's stub exactly (Plan OG-D, not yet built): the OG's
-   CC1101 lives on the main CPU, reached over an inter-CPU link this HAL does
-   not implement yet, so hal_beacon_rx() always fails on real hardware. If
-   this synthesized a fake "JEN" neighbour here instead, the OG simulator
-   would show a populated Nearby list the real board cannot produce -- the
-   exact failure mode the hal_imu() stub above exists to avoid for tilt.
-   Update this branch and hal_og.c together when Plan OG-D lands the CC1101
-   work, not one without the other. */
+/* Plan OG-D HAS now landed on the device: hal_og.c reaches the OG's two
+   CC1101s over the inter-CPU link, and Nearby populates on real hardware.
+   This branch still returns false, deliberately -- the SIMULATOR models
+   neither the link nor the radios, and synthesizing a fake neighbour here
+   would show a populated Nearby list this build cannot actually have heard.
+   That is the exact failure mode the hal_imu() stub above exists to avoid for
+   tilt.
+
+   Consequence worth knowing: in the OG simulator, Nearby's "Self" softkey
+   renders and toggles but has no observable effect, because there is no echo
+   to hide. Teaching the simulator to model the beacon was explicitly out of
+   scope for Plan OG-D. */
 bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; return false; }
 #else
 /* Fake neighbor: emit one valid beacon frame ~every 4s so the Nearby screen has content. */
@@ -119,6 +123,10 @@ bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
     return true;
 }
 #endif
+
+/* The simulator does not model the echo, so this records nothing. See the OG
+   branch above for what that means for Nearby's Self softkey. */
+void hal_beacon_show_self(bool show) { (void)show; }
 
 #if !defined(WILIDORO_BOARD_OG)
 /* --- DVI: plain RAM, blitted into a second SDL window ---------------------
@@ -173,7 +181,11 @@ bool hal_dvi_surface(hal_dvi_surface_t *s) { (void)s; return false; }
 void hal_dvi_enable(bool on) { (void)on; }
 
 /* hal_caps() matches hal_og.c's profile for the hardware this board truly
-   lacks: no light sensor, no radio (Plan OG-D), no DVI. imu=true, not
+   lacks: no light sensor, no DVI. radio=false is NOT "OG-D is unbuilt" any
+   more -- the real OG's beacon works; it is false because the SIMULATOR
+   models neither the CC1101s nor the inter-CPU link they arrive over, so
+   claiming a radio here would promise a Nearby list this build can never
+   populate. imu=true, not
    false: the OG simulator's hal_imu() above always succeeds (fake tilt,
    shared with the FW2 sim), matching the FW2 sim's own always-true .imu
    just above -- reporting false here while hal_imu() actually works would

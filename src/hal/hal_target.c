@@ -463,6 +463,10 @@ bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
     return got;
 }
 
+/* The FreeWili 2 has one radio and cannot hear itself, so there is no echo to
+   show or hide. Present only to satisfy the hal.h seam. */
+void hal_beacon_show_self(bool show) { (void)show; }
+
 bool hal_dvi_surface(hal_dvi_surface_t *s) {
     if (!s_dvi) return false;
     s->base   = hstx_dvi_video_base();
