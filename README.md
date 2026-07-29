@@ -57,6 +57,10 @@ Controls are the five coloured buttons (mapped to on-screen softkey columns), th
 
 The **FreeWili OG** (FreeWili 1 / Classic) is a second, supported board target: two RP2040s (a "display" CPU and a "main" CPU), an ST7789 320×240 panel, 7 WS2812 LEDs and 5 buttons — no touch, no light sensor, no DVI. `src/core/`, `src/app/` and `src/ui/` are shared verbatim with the FW2; only `src/hal/` differs per board.
 
+![Neon Arc on a FreeWili OG, idle at 25:00](docs/images/og-neon-arc.jpg)
+
+Neon Arc on real OG hardware, idle and ready for the first of four sessions. The five physical buttons drive the softkey columns along the bottom — `Start`, `Nearby`, `Menu` — and both CC1101 antennas are the beacon's transmit and listen radios on the main CPU.
+
 **Working today (Plan A):** the Neon Arc theme, relaid out for 320×240; the 5 physical buttons driving the same softkey columns as the FW2; the panel itself, including the bounded ST7789 init the display CPU must run on every boot.
 
 **Also hardware-verified (Plan OG-B tasks 1–4):** the 7-LED WS2812 ring and synthesized chimes over I2S (tasks 1-3); tilt-to-pause over the LIS3DH (task 4) — the board lying flat is the running orientation, tip it up and the session pauses, same gesture as the FW2. `hal_caps().imu` reflects whether `lis3dh_configure()` actually found the part at boot, not a hardcoded `true`, so a dead sensor shows up as "no imu" in Settings instead of a toggle that silently does nothing.
