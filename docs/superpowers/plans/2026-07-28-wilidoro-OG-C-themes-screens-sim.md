@@ -231,13 +231,18 @@ Per-board block: `UI_ROW_H` 34 (OG) / 44 (FW2); `UI_STEP_BTN_W` 28 / 34; `UI_STE
 
 Add `#include "ui.h"` to either file if missing.
 
-- [ ] **Step 3: Give both screens a Back softkey on the OG**
+- [ ] **Step 3: Nothing to do — both screens already leave correctly**
 
-The design decided this: the FreeWili 2 leaves these screens via its HOME/CANCEL buttons, which the OG does not have, so each screen spends its **rightmost column (4, the red button)** on *Back*.
+**This step exists to stop you "fixing" something that is not broken.** The design doc originally said these screens would need a Back softkey on the rightmost column, because the FreeWili 2 leaves them via HOME/CANCEL which the OG lacks. That was wrong, and reading the source settles it:
 
-In each screen's softkey label table, set column 4 to `"Back"` under `#if defined(WILIDORO_BOARD_OG)` and leave the FW2 labels exactly as they are. In each screen's softkey handler, route `col == 4` to `app_goto(SCREEN_TIMER)` on the OG.
+- `screen_settings.c` — `const char *lbl[5] = {"Back", 0, "Default", 0, "Save"};` and `screen_settings_softkey()` routes `col==0` to `app_goto(SCREEN_TIMER)`.
+- `screen_nearby.c` — `const char *lbl[5] = {"Back",0,0,0,0};` and `screen_nearby_softkey()` routes `col==0` likewise.
 
-**Red is also the power button** — a ~6 s hold runs `fwog_ship_enter()`. A short press is an ordinary softkey and is unaffected, but say so in a comment next to the OG label, because the next reader will wonder.
+Both already put **Back on column 0, the grey button**, and neither depends on HOME or CANCEL. The five columns map 1:1 onto the OG's five physical buttons, so these screens are already OG-compatible as written.
+
+**Do not add a Back on column 4.** On Settings that column is **Save** — adding Back there would silently destroy the ability to commit a settings change, and the label table would disagree with the handler. Leave both label tables and both handlers exactly as they are.
+
+The design doc has been corrected to match.
 
 - [ ] **Step 4: Restore the timer screen's route into them**
 

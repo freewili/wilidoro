@@ -50,9 +50,15 @@ rather than two.
 2. **LVGL 9 is ported to the OG** rather than replaced by direct ST7789
    drawing. Keeps all three themes, the `theme_t` interface, and the
    Settings/Nearby screens as LVGL code, relaid out for 320×240.
-3. **Softkeys stay 1:1.** Grey..red drive columns 0–4 exactly as on FW2.
-   Settings and Nearby spend their rightmost column on *Back*, replacing the
-   FW2 HOME/CANCEL buttons. Red short-press remains a normal softkey.
+3. **Softkeys stay 1:1.** Grey..red drive columns 0–4 exactly as on FW2. Red
+   short-press remains a normal softkey; only a ~6 s hold reaches power-off.
+
+   *Corrected during Plan OG-C planning:* this decision originally said Settings
+   and Nearby would need a *Back* softkey on their rightmost column to replace
+   the FW2's HOME/CANCEL buttons. They do not — both screens already put **Back
+   on column 0** and route it to the timer, and neither ever depended on
+   HOME/CANCEL. No change is needed on either screen. Adding a Back on column 4
+   would have been actively wrong: on Settings that column is **Save**.
 4. **No dimming.** No light sensor exists; `caps.light=false`, backlight
    pinned at 100. `dimming.c` stays in core for FW2's use.
 5. **The beacon ships in v1**, across both CPUs, using the CC1101 hardware
