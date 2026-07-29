@@ -16,6 +16,7 @@ static void audio_keep_silent(void);   /* defined in the audio section below */
 static hal_btn_t s_queue[BTN_QUEUE_LEN];
 static uint8_t   s_head, s_tail;
 static bool      s_power_armed;
+static bool      s_imu_ok;   /* set by hal_init(); see hal_caps() below */
 
 /* This board has no ambient-light sensor, so hal_lux() always returns false
    (see below) and app.c's sensor_cb auto-dim block -- the only caller of
@@ -43,13 +44,21 @@ static bool      s_power_armed;
  * raw main-loop iteration, well under 200 ms) runs before that repaint in
  * the same loop -- see src/target_og/main.c / src/sim/main.c -- so the app's
  * colours are the last thing written on any iteration where both happen to
- * run together. This is a mitigation, not an airtight guarantee: BSP's own
- * ship_render() also writes straight to the WS2812 driver, on its own 50 ms
- * cadence starting immediately at press (FWOG_SHIP_RENDER_MS in
+ * run together. That alone would only be a mitigation, not a guarantee:
+ * BSP's own ship_render() also writes straight to the WS2812 driver, on its
+ * own 50 ms cadence starting immediately at press (FWOG_SHIP_RENDER_MS in
  * wiliOGbsp/bsp/display_cpu/power/power_poll.c), independent of this
  * threshold -- so between the app's 200 ms repaints a low-progress BSP frame
- * can still reach the physical strip and be visible for up to ~200 ms before
- * the app's next tick overwrites it. */
+ * could reach the physical strip and stay visible for up to ~200 ms before
+ * the app's next tick overwrote it. hal_pump() below closes that gap itself:
+ * while p.armed is true but armed_now (post-threshold) is not, it re-pushes
+ * this HAL's own cached LED colours (hal_led_show(), which has no
+ * dependency on the app) on every hal_pump() call -- roughly every 2 ms, not
+ * every 200 ms -- so any sub-threshold BSP frame that lands in the gap is
+ * out-written on the very next main-loop iteration instead of surviving
+ * until app.c's next repaint. That shrinks the exposure window from ~200 ms
+ * to ~one loop iteration (~2 ms), and only while red is physically held
+ * pre-threshold. */
 #define FWOG_POWER_BAR_DELAY_MS 2000u
 
 /* progress/100 of the hold time must reach FWOG_POWER_BAR_DELAY_MS before the
@@ -78,6 +87,19 @@ void hal_init(void) {
        the I2C bus, the buttons and the backlight PWM divider. */
     hal_backlight(100);
     hal_led_brightness((uint8_t)FWOG_LED_BRIGHT_DEFAULT);
+
+    /* +/-2 g: tilt-to-pause cares about the direction of the 1 g gravity
+       vector, and the narrowest range gives the finest resolution for it.
+       Owning this call here (not in target_og/main.c) is what lets
+       hal_caps().imu below report the truth: s_imu_ok is exactly
+       lis3dh_configure()'s own success/failure, the same signal
+       target_og/main.c's heartbeat now reads back out through hal_caps()
+       instead of keeping a second, HAL-external copy of it. On failure
+       lis3dh_configure() itself DIAGs (whoami mismatch or I2C fault) and
+       leaves the part at its power-on power-down default; hal_imu() below
+       is written to report false forever in that case, not garbage. */
+    lis3dh_init();
+    s_imu_ok = lis3dh_configure(LIS3DH_RANGE_2G);
 }
 
 /* Once per main-loop iteration. fwog_power_poll() is THE button read: calling
@@ -88,7 +110,19 @@ void hal_pump(void) {
     /* p.armed goes true the instant red is pressed; delay handing the LED bar
        to the BSP until the hold has cleared FWOG_POWER_BAR_DELAY_MS, per the
        comment on that constant above. */
-    s_power_armed = p.armed && power_bar_delay_elapsed(p.progress);
+    const bool armed_now = p.armed && power_bar_delay_elapsed(p.progress);
+    if (p.armed && !armed_now) {
+        /* Pre-threshold hold: fwog_power_poll() above may have just let the
+           BSP's own ship_render() paint a sub-threshold countdown frame
+           straight onto the WS2812 strip (see FWOG_POWER_BAR_DELAY_MS's
+           comment). Re-push our own cached colours right now, every
+           hal_pump() call, rather than waiting for app.c's next 200 ms
+           repaint -- see that comment for why this closes the gap down to
+           about one loop iteration instead of leaving it open for up to
+           200 ms. */
+        hal_led_show();
+    }
+    s_power_armed = armed_now;
 
     /* fwog_btn_id_t is GRAY,YELLOW,GREEN,BLUE,RED == 0..4, and hal_btn_t is
        GREY,YELLOW,GREEN,BLUE,RED == 0..4. Same order, same colours. */
@@ -271,10 +305,54 @@ bool hal_lux(float *lux) { (void)lux; return false; }                   /* no am
    "tidy" it (e.g. reorder/negate to "look right") without a board in hand
    to re-confirm against. Full measurement, including angles and the
    hysteresis-band note for position 2, is in docs/hardware-notes.md. */
+/* Last GENUINE sample, seeded into `s` below before every poll. static ->
+   zero-initialized, so before the first real sample ever arrives the seed
+   reads (0,0,0). */
+static lis3dh_sample_t s_last_sample;
+static bool s_last_valid;
+
 bool hal_imu(float *ax, float *ay, float *az) {
-    lis3dh_sample_t s;
+    /* lis3dh_process() (wiliOGbsp/bsp/display_cpu/sensors/lis3dh.c:83-87,
+       and the header's own documented contract on lis3dh_advance() /
+       lis3dh_process()) has THREE outcomes, not the two an
+       `if (!ok) return false;` idiom assumes:
+         1. false             -- an I2C read failed this call.
+         2. true, no new data -- STATUS's ZYXDA bit was clear. This is
+            routine, not exceptional: this HAL polls at the ~2 ms main-loop
+            cadence, well under the sensor's 10 ms (100 Hz) sample period --
+            or, permanently, if lis3dh_configure() failed to write
+            CTRL_REG1/CTRL_REG4 (s_imu_ok false, see hal_init()) the part
+            never leaves its power-on power-down default and ZYXDA never
+            sets, for the life of the boot. Either way out_sample/out_motion
+            are left EXACTLY as the caller passed them in -- documented
+            BSP behaviour, not an omission.
+         3. true, new data    -- out_sample holds a fresh reading.
+       Declaring `lis3dh_sample_t s;` uninitialized and treating any `true`
+       as "sample valid" (the bug this replaces) converts whatever garbage
+       was on the stack to a plausible +/-2 g vector in outcome 2 -- often
+       enough that tilt.c's `mag < TILT_MAG_MIN` guard does not reject it,
+       so a running session could pause on its own.
+
+       Seeding `s` from the last GENUINE sample instead is exactly what
+       outcome 2's "leave untouched" contract calls for: on a "no new data"
+       poll, `s` comes back holding the last real reading, not garbage. And
+       refusing to report anything until a real sample has actually been
+       seen (s_last_valid) closes both the brief startup window before the
+       first ZYXDA-set poll and the permanent stuck-in-power-down case. */
+    lis3dh_sample_t s = s_last_sample;
     lis3dh_motion_t m;
-    if (!lis3dh_process(LIS3DH_MOVE_THRESHOLD_DEFAULT, &s, &m)) return false;
+    if (!lis3dh_process(LIS3DH_MOVE_THRESHOLD_DEFAULT, &s, &m)) {
+        s_last_valid = false;   /* an I2C glitch invalidates the seed too */
+        return false;
+    }
+    /* Zero-initialized statics make the pre-first-sample seed (0,0,0);
+       gravity alone puts a real reading nowhere near that on every axis at
+       once (>=1 g on some axis, i.e. >=256 raw LSB at 4 mg/digit -- see
+       lis3dh_raw_to_mg()), so "still exactly (0,0,0) and never yet valid"
+       can only mean no genuine sample has arrived, never a real reading. */
+    if (!s_last_valid && s.x == 0 && s.y == 0 && s.z == 0) return false;
+    s_last_sample = s;
+    s_last_valid = true;
     *ax = (float)lis3dh_raw_to_mg(s.x, LIS3DH_RANGE_2G) / 1000.0f;
     *ay = (float)lis3dh_raw_to_mg(s.y, LIS3DH_RANGE_2G) / 1000.0f;
     *az = (float)lis3dh_raw_to_mg(s.z, LIS3DH_RANGE_2G) / 1000.0f;
@@ -290,7 +368,7 @@ hal_caps_t hal_caps(void) {
     c.buttons = true;
     c.leds    = true;
     c.audio   = true;
-    c.imu     = true;
+    c.imu     = s_imu_ok;   /* true iff lis3dh_configure() actually found the part -- see hal_init() */
     c.radio   = false;   /* Plan OG-D */
     return c;
 }

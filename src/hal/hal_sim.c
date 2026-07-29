@@ -72,26 +72,22 @@ void hal_audio_idle(void) {}
 
 void hal_backlight(uint8_t pct) { (void)pct; }
 
-#if defined(WILIDORO_BOARD_OG)
-/* Mirrors hal_og.c's stub exactly (Plan OG-B): the OG's LIS3DH is not wired
-   up yet, so hal_imu() always fails on real hardware. screen_settings.c's
-   Tilt-to-pause toggle and app.c's sensor_cb both call this HAL seam without
-   gating on hal_caps().imu -- by design, so the FW2's shared code stays
-   untouched -- so if this returned fake tilt data here instead, the OG
-   simulator would let a user actually pause/resume a session with the
-   fake-tilt keys, something the real board cannot do. That is the exact
-   failure mode this task exists to prevent, so this stays a hard `false`,
-   not a fake reading, until Plan OG-B Task 4 lands the LIS3DH driver and its
-   bench-measured axis constant -- update this branch and hal_og.c together
-   when that happens, not one without the other. */
-bool hal_imu(float *ax, float *ay, float *az) { (void)ax;(void)ay;(void)az; return false; }
-#else
+/* Fake tilt, shared by both boards' simulators. Plan OG-B task 4 has since
+   landed the real LIS3DH driver in hal_og.c (bench-measured: Z reads +1 g
+   flat, falling toward 0 as the board tips up -- see hal_og.c's "WHICH AXIS
+   IS FLAT" comment), so this used to be an OG-only `#else` branch with a
+   hard `return false` on the OG side and a comment insisting the two stay
+   in lockstep -- "update this branch and hal_og.c together ... not one
+   without the other." This IS that update: az=+1 when flat, same
+   convention hal_og.c's real mapping uses, so tilt.c's shared gate is
+   exercised identically in both boards' simulators as on real hardware, and
+   the OG simulator -- the only way to exercise tilt without a board -- can
+   actually exercise it. */
 bool hal_imu(float *ax, float *ay, float *az) {
     float rad = (float)s_tilt_deg * 3.14159265f / 180.0f;
     *ax = sinf(rad); *ay = 0.0f; *az = cosf(rad);
     return true;
 }
-#endif
 #if defined(WILIDORO_BOARD_OG)
 bool hal_lux(float *lux) { (void)lux; return false; }   /* no ambient sensor on the OG */
 #else
@@ -176,15 +172,20 @@ hal_caps_t hal_caps(void) { hal_caps_t c = { .radio=true,.imu=true,.light=true,.
 bool hal_dvi_surface(hal_dvi_surface_t *s) { (void)s; return false; }
 void hal_dvi_enable(bool on) { (void)on; }
 
-/* hal_caps() matches hal_og.c's profile: no light sensor, no IMU wiring in
-   the sim yet, no radio (Plan OG-D), no DVI. Buttons/LEDs/audio are real in
-   the sim, same as the board. */
+/* hal_caps() matches hal_og.c's profile for the hardware this board truly
+   lacks: no light sensor, no radio (Plan OG-D), no DVI. imu=true, not
+   false: the OG simulator's hal_imu() above always succeeds (fake tilt,
+   shared with the FW2 sim), matching the FW2 sim's own always-true .imu
+   just above -- reporting false here while hal_imu() actually works would
+   make screen_settings.c's Tilt row show "no imu" even though the -/= keys
+   genuinely pause and resume a session. Buttons/LEDs/audio are real in the
+   sim, same as the board. */
 hal_caps_t hal_caps(void) {
     hal_caps_t c = {0};
     c.buttons = true;
     c.leds    = true;
     c.audio   = true;
-    c.imu     = false;
+    c.imu     = true;
     c.radio   = false;
     c.light   = false;
     c.dvi     = false;

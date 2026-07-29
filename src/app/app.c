@@ -225,11 +225,17 @@ static void tick_cb(lv_timer_t *t) {
 #endif
     /* hal_power_armed(): while a hardware power-off countdown is running, the
        BSP paints that countdown on the LED bar itself, so the app must not
-       write LEDs over it (see hal.h). Always false on FW2 and the sim. On the
-       OG this guard is currently unobservable -- nothing calls ws2812_init()
-       yet in hal_og.c, so the LED bar is dark either way; Plan OG-B wires the
-       LEDs up and is what makes this guard start mattering. Do not call
-       ws2812_init() here -- that is Plan OG-B's scope, not this fix's. */
+       write LEDs over it (see hal.h). Always false on FW2 and the sim. On
+       the OG this now genuinely matters: ws2812_init() runs at boot
+       (src/target_og/main.c), so the LED bar is real hardware, not dark.
+       hal_og.c holds hal_power_armed() false for about the first 2 s of a
+       red-button hold (FWOG_POWER_BAR_DELAY_MS in hal_og.c) even though the
+       BSP's own countdown starts painting the instant red goes down, so
+       this block keeps repainting the app's own LED pattern through that
+       initial ~2 s window rather than ceding the bar to the BSP on the very
+       first press -- see FWOG_POWER_BAR_DELAY_MS's comment in hal_og.c for
+       the full story, including how hal_pump() closes the sub-threshold
+       race on its own side of this seam. */
     if (!hal_power_armed()) {
         led_rgb_t leds[LED_COUNT_MAX];
         const int nled = hal_led_count();

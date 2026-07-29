@@ -3,15 +3,17 @@
 **Date:** 2026-07-28
 **Status:** Plan A (the Neon Arc theme relaid out for 320x240, the 5-button
 softkey mapping, the panel bring-up) is implemented and **hardware-verified**.
-Plan OG-B tasks 1-3 (the 7-LED WS2812 ring, and synthesized chimes over I2S)
-are also implemented and **hardware-verified**. All of Plan OG-C (the two
+Plan OG-B tasks 1-4 (the 7-LED WS2812 ring, synthesized chimes over I2S, and
+tilt-to-pause over the LIS3DH, including its bench-measured axis mapping) are
+also implemented and **hardware-verified**. All of Plan OG-C (the two
 remaining themes — Retro Tomato Arcade and Warm Flip Clock — live theme
 switching, the Settings screen driven from the arrow pad, the Nearby screen,
 and the SDL simulator's OG mode) is **built but has only ever been exercised
-in the SDL simulator, never on a board**. Plan OG-B task 4 (tilt-to-pause over
-the LIS3DH) and Plan OG-D (the sub-GHz beacon over the CC1101) remain to be
-built — `hal_imu()` and `hal_beacon_rx()` both hard-return `false` on this
-board today.
+in the SDL simulator, never on a board**. Plan OG-D (the sub-GHz beacon over
+the CC1101) remains to be built — `hal_beacon_rx()` hard-returns `false` on
+this board today. `hal_imu()` is real now; `hal_caps().imu` reflects whether
+`lis3dh_configure()` actually found the part at boot, rather than assuming
+it did.
 
 Port wilidoro to the FreeWili OG (FreeWili 1 / Classic) on top of
 [`wiliOGbsp`](https://github.com/freewili/wiliOGbsp), as a second board target

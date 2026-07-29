@@ -129,8 +129,16 @@ static lv_obj_t *add_row(const char *name, int which) {
    add_row() set up -- overwriting border_side with LEFT alone would have
    silently dropped that divider, so BOTTOM stays OR'd in throughout. */
 static void select_row(int idx) {
-    if (idx < 0) idx = N_SET_ROWS - 1;
-    else if (idx >= N_SET_ROWS) idx = 0;
+    /* Wrap on s_row_count, the number of rows actually filled in, NOT
+       N_SET_ROWS -- add_row() (above) deliberately tolerates under-filling
+       (`if (s_row_count < N_SET_ROWS)`), which makes N_SET_ROWS a capacity,
+       not a count. The two are equal today (7 rows, 7 slots), but the next
+       conditionally-compiled row (e.g. a future Beacon row gated on
+       hal_caps().radio, which is false on the OG) would leave
+       s_row_obj[N_SET_ROWS-1] == NULL, and wrapping on N_SET_ROWS would
+       dereference it below -- hard fault. */
+    if (idx < 0) idx = s_row_count - 1;
+    else if (idx >= s_row_count) idx = 0;
 
     /* Clear the old row's selected treatment completely before reassigning
        s_sel, so nothing accumulates as the selection moves down the list. */
@@ -209,8 +217,11 @@ void screen_settings_update(void) {
     /* Keep the selected row's accent bar in sync if the theme changes while
        that row (e.g. "Theme" itself) is selected -- select_row() only
        stamps the accent at selection time, and this runs every frame while
-       Settings is on screen, same as the title above it. */
-    lv_obj_set_style_border_color(s_row_obj[s_sel], lv_color_hex(accent), 0);
+       Settings is on screen, same as the title above it. select_row() now
+       always wraps within s_row_count, so s_row_obj[s_sel] should never be
+       NULL, but this runs unconditionally every frame regardless of how
+       s_sel got set, so guard it defensively rather than trust that. */
+    if (s_row_obj[s_sel]) lv_obj_set_style_border_color(s_row_obj[s_sel], lv_color_hex(accent), 0);
 #endif
 }
 

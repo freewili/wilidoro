@@ -142,9 +142,15 @@ TEST og_seven_alarm_lights_all_seven(void) {
 
 TEST og_seven_does_not_touch_slack(void) {
     led_rgb_t o[LED_COUNT_MAX];
-    /* Sentinel the tail: rendering at count 7 must leave indices 7..15 alone. */
+    /* Sentinel the tail: rendering at count 7 must leave indices 7..15 alone.
+       Must be a progress state, not alarm: alarm returns at led_pattern.c:17
+       -19, before the fractional leading-LED code ever runs, so an alarm
+       state here would never exercise out[lit_full] -- the one write the
+       smooth-intensity change added -- against this sentinel at all. 50%
+       elapsed (total=1000, rem=500) puts the leading edge mid-array
+       (lit_full=3 of 7), so out[3] actually gets written and checked. */
     for (int i = 0; i < LED_COUNT_MAX; i++) { o[i].r = 0xAB; o[i].g = 0xCD; o[i].b = 0xEF; }
-    timer_view_t v = V(false,false,true,false, 1000, 0);   /* alarm: writes every led */
+    timer_view_t v = V(false,false,false,false, 1000, 500);
     led_pattern_render(1, &v, o, 7);
     for (int i = 7; i < LED_COUNT_MAX; i++) {
         ASSERT_EQ(0xAB, o[i].r); ASSERT_EQ(0xCD, o[i].g); ASSERT_EQ(0xEF, o[i].b);
