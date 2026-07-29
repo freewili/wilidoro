@@ -181,7 +181,11 @@ bool hal_dvi_surface(hal_dvi_surface_t *s) { (void)s; return false; }
 void hal_dvi_enable(bool on) { (void)on; }
 
 /* hal_caps() matches hal_og.c's profile for the hardware this board truly
-   lacks: no light sensor, no radio (Plan OG-D), no DVI. imu=true, not
+   lacks: no light sensor, no DVI. radio=false is NOT "OG-D is unbuilt" any
+   more -- the real OG's beacon works; it is false because the SIMULATOR
+   models neither the CC1101s nor the inter-CPU link they arrive over, so
+   claiming a radio here would promise a Nearby list this build can never
+   populate. imu=true, not
    false: the OG simulator's hal_imu() above always succeeds (fake tilt,
    shared with the FW2 sim), matching the FW2 sim's own always-true .imu
    just above -- reporting false here while hal_imu() actually works would
