@@ -18,7 +18,7 @@
 - **`hal_pump()` must remain the single `fwog_power_poll()` call site, once per main-loop iteration.**
 - **Never add a watchdog to the display CPU.** Do not touch `src/main_og/main.c`.
 - **Keep the bounded ST7789 init** in `src/target_og/main.c` before `lvgl_port_og_init()`, and keep `ws2812_init()` / `i2s_audio_init()` from Plan OG-B.
-- **RAM is the budget to watch.** Plan OG-B left `wilidoro_display` at roughly 152 KB of the RP2040's 264 KB. Two more themes and two more screens are the largest single addition this port makes. `LV_MEM_SIZE` in `config/lv_conf.h` is the knob; read the linker's `-Wl,--print-memory-usage` output every task and stop if RAM crosses ~200 KB.
+- **RAM is the budget to watch.** Plan OG-B left `wilidoro_display` at **162,764 B (62.09 %)** of the RP2040's 256 KB main bank. (An earlier draft of this plan said "~152 KB"; that was a mid-OG-B checkpoint taken before Task 3 added the 6.4 KB static tone buffer. **Compare against 162,764 B**, not 152 KB.) Two more themes and two more screens are the largest single addition this port makes. `LV_MEM_SIZE` in `config/lv_conf.h` is the knob; read the linker's `-Wl,--print-memory-usage` output every task and stop if RAM crosses ~200 KB.
 - **No `printf`** — `DIAG()` only, never with floats or `%f`.
 - **`wiliOGbsp/` is a read-only submodule.**
 - **The FreeWili 2 build must not regress** and all **12** host test binaries must stay green.
