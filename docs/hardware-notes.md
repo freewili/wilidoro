@@ -705,10 +705,13 @@ own decision, not a quick tweak, and record the outcome here once judged.
 ## FreeWili OG — tilt-to-pause axis (bench-measured 2026-07-29)
 
 *The axis mapping is confirmed on hardware via a temporary DIAG (since
-removed). The end-to-end pause/resume behaviour — the app actually pausing
-when the board is tipped and resuming when it's set flat — has **not** been
-confirmed by a human as of this writing; that check happens on the next
-flash.*
+removed). **The end-to-end behaviour is also now confirmed by a human on the
+board (2026-07-29):** starting a session flat and tipping the board pauses it,
+setting it flat again resumes it, and the audible chime that accompanies any
+pause/resume fires on the tilt-driven transitions too — which turns out to
+matter, because when you tip the board away from you the panel is often not
+facing you and the sound is the only feedback you get. No chatter was reported
+at the threshold.*
 
 Plan OG-B (Task 4) wires the LIS3DH into `hal_imu()` in `src/hal/hal_og.c`.
 `lis3dh_init()`/`lis3dh_configure(LIS3DH_RANGE_2G)` run in
@@ -799,6 +802,67 @@ a 14 px font (would affect both boards, since the font choice is currently
 shared), or shorten the three offending words. **This is recorded as a known,
 unfixed defect** — the label text and `UI_SOFTKEY_BTN_W` are unchanged in this
 branch.
+
+## FreeWili OG — what a human actually confirmed on the board (2026-07-29)
+
+Plan OG-C shipped without any board time — the three themes, Settings and
+Nearby were built and reviewed but seen by nobody. That gap is now partly
+closed. This section records **only** what a human observed on real hardware in
+one session, so a later reader can tell it apart from what was reasoned,
+simulated, or measured from font metrics.
+
+**Confirmed working:**
+
+- **Settings is reachable and navigable.** A short red press opens it from the
+  timer face; the five-button arrow pad (grey up, yellow −, green OK, blue +,
+  red down) moves the selection and changes values. All three themes were
+  cycled from the Theme row and the timer face rebuilt live in each.
+- **The ~6 s red hold still powers the board off, from the timer face *and*
+  from inside Settings**, on battery. This was the specific risk in rebinding
+  red to "Down" in Settings — a short press being consumed as a softkey could
+  plausibly have shadowed the BSP's hold detection. It does not.
+- **Tilt-to-pause, end to end**, including the chime on each transition. See
+  the tilt-axis section above.
+
+**Measured, not estimated — the LVGL heap.** The runtime heap was the one
+budget number that no link-time figure could reveal: `-Wl,--print-memory-usage`
+counts the 64 KB `LV_MEM_SIZE` pool as a single fixed block, so widget
+allocation is invisible to it. With all three screens built and all three
+themes registered, the 1 Hz heartbeat reported:
+
+```
+heap free=32192  max_used=30180  frag_pct=0
+```
+
+**~30 KB of the 64 KB pool in use, ~32 KB free, essentially no
+fragmentation.** A pre-flash review had estimated 25–45 KB from object counts,
+so the estimate was sound, but this is the first real number. It retires a
+genuine risk: `LV_USE_ASSERT_MALLOC` is 1 with `LV_ASSERT_HANDLER` set to
+`while(1)` and `LV_USE_LOG` 0, so pool exhaustion would have been a **silent
+hang inside `lv_timer_handler()`** — and because `hal_pump()` (the sole
+`fwog_power_poll()`) shares that loop, the 6 s power-off would have died with
+it. The discriminator, if anyone ever sees it: a board that is frozen *and*
+will not power off by red-hold is out of LVGL heap, not suffering a panel
+fault. `LV_MEM_SIZE` needs no change.
+
+**Judged and then changed, on the strength of looking at it:**
+
+- **The Settings selection highlight was too faint.** Built as `UI_PANEL`
+  (0x141B26) on a `UI_BG` (0x0C0C12) list — about 1/3/2 LSBs apart after RGB565
+  quantisation. It rendered acceptably in the SDL simulator, and the verdict
+  from the panel was *"really hard to see but its visible."* That is worth
+  recording as a case where **the simulator was not wrong but was not
+  sufficient**: a small panel's gamma flattened a difference that a desktop
+  monitor showed fine. Replaced with a theme-accent treatment.
+- **"Resume" and "Dismiss" do clip**, exactly as the font metrics predicted —
+  confirmation that the analytic method in the section above is sound. On the
+  OG they are now "Go" and "Cancel"; the FreeWili 2's 92 px buttons keep the
+  original words.
+
+**Still not confirmed by anyone:** the arcade and flip faces have only been
+seen in the simulator, not on the panel. The 2 s delay before the power-down
+countdown appears, and the LED bar's scaled leading edge, were both built after
+the last flash of this session and remain untested on hardware.
 
 ---
 

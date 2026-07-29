@@ -550,27 +550,42 @@ In `src/target_og/main.c`, alongside the other peripheral init:
 
 In `src/hal/hal_og.c`, replace the IMU stub. Keep the axis mapping in one obvious place, because Step 4 will change it:
 
-```c
-/* LIS3DH at +/-2 g. The datasheet's normal-mode 10-bit sensitivity is
-   4 mg/digit, and lis3dh_assemble_axis() returns the register pair as a signed
-   16-bit value whose low 6 bits are not significant in that mode -- so a raw
-   count is (value >> 6) * 4 mg. Expressed as g: raw / 16384.0f. */
-#define LIS3DH_COUNTS_PER_G 16384.0f
+> **CORRECTED 2026-07-29, after implementation.** This step originally defined
+> `#define LIS3DH_COUNTS_PER_G 16384.0f` and divided the raw counts by it. **That
+> constant is wrong** — 16384 is 2^14, reached for by hand. The arithmetic in its
+> own comment gives a different answer: a raw count is `(value >> 6) * 4 mg`, so
+> 1 g is `1000 / 4 * 64` = **16000** counts, not 16384. The error is 2.4 %, which
+> is small enough to slip past Step 4's own 4×-error check.
+>
+> Worse, the constant was never needed: the BSP already exposes a host-tested
+> conversion, `lis3dh_raw_to_mg()` (`wiliOGbsp/bsp/display_cpu/sensors/lis3dh.h`),
+> which undoes the left-justification with a sign-preserving shift and scales by
+> `lis3dh_mg_per_lsb(range)` — correct for any full-scale range, with the range
+> named in exactly one place. **Use it. Do not reintroduce a `COUNTS_PER_G`
+> constant.** The code below is what actually shipped.
 
+```c
 /* WHICH AXIS IS "FLAT" IS BENCH-MEASURED, NOT DERIVED. The FreeWili 2's
    BMI323 sits in a different orientation, so tilt.c's convention -- board
    lying flat is the running orientation -- maps onto different axes here.
-   See docs/hardware-notes.md; do not "tidy" this mapping without a board. */
+   See docs/hardware-notes.md; do not "tidy" this mapping without a board.
+
+   Scaling comes from the BSP's host-tested lis3dh_raw_to_mg() rather than a
+   hand-derived counts-per-g constant -- see the correction note above. */
 bool hal_imu(float *ax, float *ay, float *az) {
     lis3dh_sample_t s;
     lis3dh_motion_t m;
     if (!lis3dh_process(LIS3DH_MOVE_THRESHOLD_DEFAULT, &s, &m)) return false;
-    *ax = (float)s.x / LIS3DH_COUNTS_PER_G;
-    *ay = (float)s.y / LIS3DH_COUNTS_PER_G;
-    *az = (float)s.z / LIS3DH_COUNTS_PER_G;
+    *ax = (float)lis3dh_raw_to_mg(s.x, LIS3DH_RANGE_2G) / 1000.0f;
+    *ay = (float)lis3dh_raw_to_mg(s.y, LIS3DH_RANGE_2G) / 1000.0f;
+    *az = (float)lis3dh_raw_to_mg(s.z, LIS3DH_RANGE_2G) / 1000.0f;
     return true;
 }
 ```
+
+**Measured outcome (2026-07-29):** Z is the flat axis, sign positive, and the
+straight-through mapping above is correct — no negation, no axis swap. The
+milli-g triples are in `docs/hardware-notes.md`.
 
 - [ ] **Step 3: Add a temporary axis-reporting DIAG**
 
@@ -598,7 +613,9 @@ Run: `powershell -File tools/build_og.ps1` then `powershell -File tools/flash_og
 
 The axis reading close to **+1000 mg in position 1** and falling toward 0 through positions 2 and 3 is the "flat" axis. Set the mapping in `hal_imu()` so that the value `tilt.c` sees as `az` is that axis, negating it if position 1 reads about **−1000**.
 
-**These readings also check `LIS3DH_COUNTS_PER_G` itself.** In position 1 exactly one axis should read about ±1000 mg and the other two near 0, because the only force acting is 1 g of gravity. If instead the dominant axis reads roughly **250 mg** the constant is 4× too large; roughly **4000 mg** and it is 4× too small — either way the fix is `LIS3DH_COUNTS_PER_G`, not the axis mapping. Do not proceed to Step 5 until one axis reads about 1 g, or `tilt.c`'s thresholds will be compared against a wrongly scaled vector.
+**These readings also check the scaling itself.** In position 1 exactly one axis should read about ±1000 mg and the other two near 0, because the only force acting is 1 g of gravity. If instead the dominant axis reads roughly **250 mg** the scaling is 4× too large; roughly **4000 mg** and it is 4× too small — either way the fault is in the raw-to-mg conversion, not the axis mapping. Do not proceed to Step 5 until one axis reads about 1 g, or `tilt.c`'s thresholds will be compared against a wrongly scaled vector.
+
+**A caveat this check does not cover, learned the hard way.** It only catches gross 4× errors. The original `16384` constant was 2.4 % off and would have passed this check cleanly — the measured 1064 mg flat reading looks perfectly healthy either way. Sanity-checking the magnitude is necessary but not sufficient; prefer the BSP's tested conversion over any hand-derived constant, and treat "one axis reads about 1 g" as evidence the scaling is not *badly* wrong rather than proof it is right.
 
 - [ ] **Step 5: Confirm tilt-to-pause end to end**
 
