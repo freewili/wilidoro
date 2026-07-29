@@ -972,18 +972,34 @@ wilidoro_display`.
 3. **PASSED 2026-07-29. The liveness window closes.** `fw bootsel --cpu main`
    took the main CPU away and the display flipped to `radio=FAILED` at
    **t+12 s**, inside the 15 s window. Settings renders the same value.
-4. **NOT DONE — needs the panel. Nearby is empty by default**, with a single
-   board. The device's own echo is dropped.
-5. **NOT DONE — needs the panel. Press `Self` on Nearby (column 4).** Within one beacon period (~20 s) our
-   own name must appear, in the theme accent colour. This is the whole chain
-   proven end to end on one board: `beacon_pack` → `0x40` → CS0 keys → over the
-   air → CS1 → `0x41` → `beacon_unpack` → a row on screen.
-6. **NOT DONE — needs the panel. Press `Self` again.** The row must disappear within `neighbor_expire()`'s
-   timeout.
-7. **NOT DONE — needs the panel. Confirm `Self` renders cleanly.** Measured at 30 px in a 60 px button
-   above, so this should be comfortable — but nobody has looked at it on the
-   panel.
-8. **NOT DONE — needs the panel. Turn the beacon off in Settings.** Nearby must stop gaining rows.
+4. **NOT DONE — needs the panel. FIRST TURN THE BEACON ON.** `beacon_on`
+   defaults to **false** (`app_model.c:15`), deliberately — it broadcasts the
+   configured name and focus state unauthenticated every ~20 s. Nothing
+   transmits until you enable it, so items 5-6 below will show an empty list
+   and look broken if you skip this.
+
+   From the timer face: **red** → Settings. Settings uses the arrow-pad layout
+   (grey=Up, yellow=−, green=OK, blue=+, red=Down). `Beacon` is the **5th**
+   row, so **red ×4** to reach it, **blue** to turn it on, **green** to apply
+   and return.
+
+   *Then* the real version of this check: with the beacon ON and `Self` OFF,
+   Nearby must **stay empty**. That is the echo drop working — the device is
+   transmitting every ~20 s and hearing itself every time, and discarding it.
+   (With the beacon off this check proves nothing.)
+5. **NOT DONE — needs the panel. Press `Self` on Nearby (column 4 = red).**
+   From the timer face, **blue** → Nearby. Within one beacon period (~20 s,
+   with ±3 s jitter) the name `WILI` — the default — must appear, drawn in the
+   theme accent colour. This is the whole chain proven end to end on one board:
+   `beacon_pack` → `0x40` → CS0 keys → over the air → CS1 → `0x41` →
+   `beacon_unpack` → a row on screen.
+6. **NOT DONE — needs the panel. Press `Self` again.** The row must disappear
+   within `neighbor_expire()`'s timeout.
+7. **NOT DONE — needs the panel. Confirm `Self` renders cleanly.** Measured at
+   30 px in a 60 px button above, so this should be comfortable — but nobody
+   has looked at it on the panel.
+8. **NOT DONE — needs the panel. Turn the beacon back off in Settings.** Nearby
+   must stop gaining rows.
 
 ### What the board actually said (2026-07-29)
 
