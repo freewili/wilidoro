@@ -35,6 +35,10 @@
 
 #define WD_SELFTEST_WAIT_MS 300u
 
+/* What one of our frames occupies in the RX FIFO: the transmitter's length
+   byte, the 16-byte beacon, and the two appended status bytes. */
+#define WD_RX_FRAME_LEN (1u + BEACON_WIRE_LEN + 2u)
+
 /* CS0 transmits, CS1 listens. Named by CHIP SELECT, never by an ordinal
    "radio 1/2": cc1101.h records that the reference's variable names, the
    schematic silkscreen and the pin suffixes all disagree with each other. */
@@ -55,8 +59,21 @@ static bool configure_radio(cc1101_t *r, int dbm) {
     ok = ok && cc1101_bringup(r);
     ok = ok && cc1101_set_frequency(r, WD_BEACON_HZ);
     ok = ok && cc1101_set_modulation(r, CC1101_MOD_2FSK);
-    ok = ok && cc1101_set_length_config(r, 0u);       /* 0 = fixed length */
-    ok = ok && cc1101_set_packet_length(r, (uint8_t)BEACON_WIRE_LEN);
+    /* VARIABLE length (1), not fixed. This is not a preference -- it is forced
+       by the driver: cc1101_send_packet() unconditionally writes a length byte
+       into the TX FIFO before the payload (cc1101.c:709), because it was ported
+       from a reference that only ever used variable length. In fixed-length
+       mode with PKTLEN=16 the radio therefore transmits [0x10, wire[0..14]] and
+       silently drops wire[15]; the hardware CRC still passes, because the frame
+       is self-consistent -- it is just shifted by one.
+
+       Measured on hardware 2026-07-29, first flash: cs0=ok cs1=ok, crc=1,
+       lqi=1, rssi=-46 dBm, and "payload wrong". A clean RF path carrying the
+       wrong bytes is exactly what this looks like from the outside.
+
+       PKTLEN is deliberately left at the bringup bank's default: in variable
+       mode it is a MAXIMUM, not a length, and bench_main never set it. */
+    ok = ok && cc1101_set_length_config(r, 1u);
     ok = ok && cc1101_set_crc(r, true);
     ok = ok && cc1101_set_white_data(r, true);
     ok = ok && cc1101_set_sync_word(r, WD_SYNC_HI, WD_SYNC_LO);
@@ -87,33 +104,34 @@ static wd_selftest_t run_selftest(int8_t *out_rssi, uint8_t *out_lqi) {
     if (!cc1101_send_packet(&s_radio[WD_TXR], wire, (uint8_t)BEACON_WIRE_LEN))
         return WD_SELFTEST_NO_KEY;
 
+    /* Wait for the WHOLE packet, not merely the first byte. Breaking on any
+       non-zero count reads a half-arrived frame and reports it as corrupt --
+       the RX FIFO fills progressively, so "some bytes" is not "a packet". */
     const absolute_time_t deadline = make_timeout_time_ms(WD_SELFTEST_WAIT_MS);
     int raw = 0;
     while (!time_reached(deadline)) {
         board_watchdog_kick();          /* REQUIRED: 2 s watchdog, no other recovery */
         raw = cc1101_rx_bytes_available(&s_radio[WD_RXR]);
-        if (raw > 0 && (raw & 0x7F) > 0) break;
+        if (raw > 0 && (unsigned)(raw & 0x7F) >= WD_RX_FRAME_LEN) break;
     }
     const unsigned n = (raw > 0) ? (unsigned)(raw & 0x7F) : 0u;
-    if (n == 0u) return WD_SELFTEST_NO_RX;
+    if (n < WD_RX_FRAME_LEN) return WD_SELFTEST_NO_RX;
 
-    /* Fixed-length mode puts NO length byte in the FIFO, so the payload starts
-       at offset 0 -- unlike bench_main, which runs variable-length and reads
-       buf[0] as a count. Two appended status bytes follow (PKTCTRL1
-       APPEND_STATUS, left enabled by the bringup bank). */
-    uint8_t buf[BEACON_WIRE_LEN + 2];
-    const unsigned want = (n > sizeof buf) ? (unsigned)sizeof buf : n;
-    if (cc1101_receive_packet(&s_radio[WD_RXR], buf, (uint8_t)want) < 0)
+    /* Variable-length mode: buf[0] is the length the transmitter wrote, the
+       payload follows at offset 1, then the two appended status bytes
+       (PKTCTRL1 APPEND_STATUS, left enabled by the bringup bank). */
+    uint8_t buf[WD_RX_FRAME_LEN];
+    if (cc1101_receive_packet(&s_radio[WD_RXR], buf, (uint8_t)sizeof buf) < 0)
         return WD_SELFTEST_NO_RX;
 
     /* Per-PACKET RSSI and LQI from the appended status bytes -- not the
        free-running RSSI register, which reads whatever the channel held when
        it was sampled. These are the numbers that answer the RF question. */
-    if (want >= BEACON_WIRE_LEN + 2u) {
-        *out_rssi = (int8_t)cc1101_rssi_dbm((int8_t)buf[BEACON_WIRE_LEN]);
-        *out_lqi = buf[BEACON_WIRE_LEN + 1u];
-    }
-    if (want < BEACON_WIRE_LEN || memcmp(buf, wire, BEACON_WIRE_LEN) != 0)
+    *out_rssi = (int8_t)cc1101_rssi_dbm((int8_t)buf[1 + BEACON_WIRE_LEN]);
+    *out_lqi = buf[2 + BEACON_WIRE_LEN];
+
+    if (buf[0] != (uint8_t)BEACON_WIRE_LEN ||
+        memcmp(&buf[1], wire, BEACON_WIRE_LEN) != 0)
         return WD_SELFTEST_CORRUPT;
     return WD_SELFTEST_PASS;
 }
@@ -126,6 +144,20 @@ static const char *selftest_text(wd_selftest_t s) {
     case WD_SELFTEST_CORRUPT: return "DEGRADED heard but payload wrong";
     default:                  return "not run";
     }
+}
+
+/* The self-test result, in full. Called from radio_init() AND repeated once a
+   second for the first 10 s: a boot-time-only DIAG lands in the window before
+   USB CDC enumerates and pico_stdio_usb drops it outright -- measured, not
+   feared, on the very first flash of this feature, when the whole line went
+   missing from both consoles. This is the same reason the "main alive" line
+   below repeats, and the same reason target_og/main.c's heartbeat exists. */
+static void diag_radio(void) {
+    DIAG("[wilidoro] radio cs0=%s cs1=%s selftest=%s rssi=%d lqi=%u crc=%d\n",
+         (s_flags & WD_STATUS_CS0_UP) ? "ok" : "FAILED",
+         (s_flags & WD_STATUS_CS1_UP) ? "ok" : "FAILED",
+         selftest_text(s_selftest), (int)s_rssi,
+         (unsigned)(s_lqi & 0x7Fu), (s_lqi & 0x80u) ? 1 : 0);
 }
 
 /* Runs once, after fwog_display_update_run(). */
@@ -152,10 +184,7 @@ static void radio_init(void) {
     if (cs0) (void)cc1101_set_power(&s_radio[WD_TXR], WD_OPERATING_DBM);
     if (cs1) (void)cc1101_rx(&s_radio[WD_RXR]);   /* park the receiver, permanently */
 
-    DIAG("[wilidoro] radio cs0=%s cs1=%s selftest=%s rssi=%d lqi=%u crc=%d\n",
-         cs0 ? "ok" : "FAILED", cs1 ? "ok" : "FAILED",
-         selftest_text(s_selftest), (int)s_rssi,
-         (unsigned)(s_lqi & 0x7Fu), (s_lqi & 0x80u) ? 1 : 0);
+    diag_radio();
 }
 
 /* Main's own receive state. fwog_display_update_run() already called
@@ -201,14 +230,20 @@ static void poll_radio(void) {
         return;
     }
     const unsigned n = (unsigned)(raw & 0x7F);
-    if (n < BEACON_WIRE_LEN + 2u) return;      /* not a whole packet yet */
+    if (n < WD_RX_FRAME_LEN) return;           /* not a whole packet yet */
 
-    uint8_t buf[BEACON_WIRE_LEN + 2];          /* payload + RSSI + LQI */
+    uint8_t buf[WD_RX_FRAME_LEN];              /* len + payload + RSSI + LQI */
     if (cc1101_receive_packet(&s_radio[WD_RXR], buf, (uint8_t)sizeof buf) < 0) return;
 
-    uint8_t p[sizeof(wd_link_beacon_t)];
-    const size_t m = wd_link_build_beacon(p, sizeof p, WD_LINK_MSG_BEACON_RX, buf);
-    if (m != 0u) (void)fwog_link_uart_send_frame(p, m);
+    /* buf[0] is the transmitter's length byte (variable-length mode -- see
+       configure_radio). Anything not claiming exactly our payload size is
+       somebody else's traffic that happened to share our sync word; drop it
+       rather than forwarding 16 bytes of noise for beacon_unpack() to reject. */
+    if (buf[0] == (uint8_t)BEACON_WIRE_LEN) {
+        uint8_t p[sizeof(wd_link_beacon_t)];
+        const size_t m = wd_link_build_beacon(p, sizeof p, WD_LINK_MSG_BEACON_RX, &buf[1]);
+        if (m != 0u) (void)fwog_link_uart_send_frame(p, m);
+    }
 
     /* Re-arm: the bringup bank's MCSM1 returns the radio to IDLE after a
        received packet, so without this CS1 hears exactly one frame per boot. */
@@ -259,8 +294,15 @@ int main(void) {
             if (!time_reached(announce_until)) {
                 DIAG("[wilidoro] main alive, display: %s\n",
                      fwog_display_result_text(disp));
+                diag_radio();   /* see diag_radio(): the boot-only copy is dropped */
             } else {
-                DIAG("[wilidoro] main alive\n");
+                /* Steady state keeps a compact radio verdict rather than
+                   dropping it entirely -- attaching a console minutes after
+                   boot must still answer "is the radio up?". The RSSI/LQI
+                   detail stays in the 10 s window above. */
+                DIAG("[wilidoro] main alive, radio=%s\n",
+                     ((s_flags & (WD_STATUS_CS0_UP | WD_STATUS_CS1_UP))
+                      == (WD_STATUS_CS0_UP | WD_STATUS_CS1_UP)) ? "ok" : "FAILED");
             }
         }
         sleep_ms(2);
