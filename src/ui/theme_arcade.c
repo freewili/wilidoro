@@ -1,4 +1,5 @@
 #include "theme.h"
+#include "ui.h"
 #include <stdio.h>
 
 #define AR_BG     0x2d1b4e
@@ -33,7 +34,7 @@ static void ar_build(lv_obj_t *face) {
     /* big time, right of mascot */
     s_time = lv_label_create(face);
     lv_obj_set_style_text_color(s_time, lv_color_hex(AR_YELLOW), 0);
-    lv_obj_set_style_text_font(s_time, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(s_time, UI_FONT_BIG, 0);
     lv_obj_align(s_time, LV_ALIGN_TOP_RIGHT, -30, 66);
     lv_label_set_text(s_time, "25:00");
 
@@ -45,7 +46,7 @@ static void ar_build(lv_obj_t *face) {
 
     /* health-bar progress */
     s_bar = lv_bar_create(face);
-    lv_obj_set_size(s_bar, 400, 22);
+    lv_obj_set_size(s_bar, UI_ARCADE_BAR_W, UI_ARCADE_BAR_H);
     lv_obj_align(s_bar, LV_ALIGN_CENTER, 0, 40);
     lv_bar_set_range(s_bar, 0, 1000);
     lv_bar_set_value(s_bar, 1000, LV_ANIM_OFF);

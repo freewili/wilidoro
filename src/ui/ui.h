@@ -11,6 +11,7 @@
   #define UI_SOFTKEY_H       28
   #define UI_SOFTKEY_BTN_W   60
   #define UI_SOFTKEY_BTN_H   22
+  #define UI_ARCADE_BAR_H    16
 #else
   #define UI_W               480
   #define UI_H               320
@@ -18,9 +19,13 @@
   #define UI_SOFTKEY_H       34
   #define UI_SOFTKEY_BTN_W   92
   #define UI_SOFTKEY_BTN_H   28
+  #define UI_ARCADE_BAR_H    22
 #endif
 /* The face is everything above the softkey bar. */
 #define UI_FACE_H           (UI_H - UI_SOFTKEY_H)
+/* Health-bar width: 400 on FW2 (480-80), 240 on the OG (320-80), matching
+   the literal each build had before. */
+#define UI_ARCADE_BAR_W      (UI_W - 80)
 /* neutral palette (Plan B2 themes override per-screen) */
 #define UI_BG      0x0C0C12
 #define UI_PANEL   0x141b26
