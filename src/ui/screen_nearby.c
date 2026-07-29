@@ -19,6 +19,24 @@ static lv_obj_t *s_scr, *s_list, *s_bar, *s_empty, *s_title;
    Deliberately NOT persisted in app_settings_t: this is a diagnostic, and the
    settings save path only just had a bug fixed (858454a). */
 static bool s_show_self;
+
+/* The label states what pressing will DO, and so also reports what is
+   currently true: "+Self" means our own beacon is hidden and pressing adds it.
+   A toggle whose only feedback was the list itself would take up to a full
+   beacon period (~20 s) to confirm a press -- unusable.
+
+   Both strings are measured, not guessed: "+Self" is 39 px and "-Self" 36 px
+   against a 60 px button (lv_text_get_width, Montserrat 16). That is inside
+   the range "Back" (41 px) already renders correctly in, and well clear of
+   "Dismiss" (62 px), which clips -- see the softkey width table in
+   docs/hardware-notes.md. "Self on"/"Self off" would have been more explicit
+   but measure 55/56 px, a few pixels from the known-bad case. */
+#define NEARBY_SELF_LABEL(shown) ((shown) ? "-Self" : "+Self")
+
+static void nearby_set_softkeys(void) {
+    const char *lbl[5] = {"Back", 0, 0, 0, NEARBY_SELF_LABEL(s_show_self)};
+    ui_softkey_set_labels(s_bar, lbl);
+}
 #endif
 
 lv_obj_t *screen_nearby_create(void) {
@@ -40,17 +58,14 @@ lv_obj_t *screen_nearby_create(void) {
 
     s_bar = ui_softkey_bar(s_scr, screen_nearby_softkey);
 #if defined(WILIDORO_BOARD_OG)
+    /* Column 4 is free -- this screen has only ever used column 0. */
     s_show_self = false;
     hal_beacon_show_self(false);
-    /* Column 4 is free -- this screen has only ever used column 0. The label
-       does not encode on/off because the LIST is the state readout, and
-       because 60 px buttons at a 16 px font are why "Dismiss" already clips
-       (docs/hardware-notes.md, "softkey label clipping"). */
-    const char *lbl[5] = {"Back",0,0,0,"Self"};
+    nearby_set_softkeys();
 #else
     const char *lbl[5] = {"Back",0,0,0,0};
-#endif
     ui_softkey_set_labels(s_bar, lbl);
+#endif
     return s_scr;
 }
 
@@ -96,6 +111,7 @@ void screen_nearby_softkey(int col) {
     if (col == 4) {
         s_show_self = !s_show_self;
         hal_beacon_show_self(s_show_self);
+        nearby_set_softkeys();   /* immediate feedback; the list lags by a beacon period */
     }
 #endif
 }

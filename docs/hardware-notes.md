@@ -942,7 +942,9 @@ clipping issue recorded above at exact numbers:
 
 | Label | Width | 60 px button (OG) |
 |---|---|---|
-| `Self` | 30 px | fits |
+| `-Self` | 36 px | fits |
+| `+Self` | 39 px | fits |
+| `Self on` / `Self off` | 55 / 56 px | nominally fits, but only 4 px clear of the known-bad case — avoided |
 | `Save` | 38 px | fits |
 | `Back` | 41 px | fits |
 | `Dismiss` | **62 px** | clips |
@@ -987,7 +989,11 @@ wilidoro_display`.
    Nearby must **stay empty**. That is the echo drop working — the device is
    transmitting every ~20 s and hearing itself every time, and discarding it.
    (With the beacon off this check proves nothing.)
-5. **NOT DONE — needs the panel. Press `Self` on Nearby (column 4 = red).**
+5. **NOT DONE — needs the panel. Press the self toggle on Nearby (column 4 = red).**
+   The label itself flips `+Self` <-> `-Self` on the press, so the button
+   confirms the state immediately rather than making you wait a beacon period
+   for the list to catch up. `+Self` means self is currently hidden.
+
    From the timer face, **blue** → Nearby. Within one beacon period (~20 s,
    with ±3 s jitter) the name `WILI` — the default — must appear, drawn in the
    theme accent colour. This is the whole chain proven end to end on one board:
