@@ -58,7 +58,11 @@ bool hal_power_armed(void) { return false; }
 
 /* LEDs — store state; a visible on-screen strip is a Plan C nicety, so keep it minimal here. */
 static uint8_t s_led_bri = 40;
+#if defined(WILIDORO_BOARD_OG)
+int hal_led_count(void) { return 7; }
+#else
 int hal_led_count(void) { return 16; }
+#endif
 void hal_led_set(int i, uint8_t r, uint8_t g, uint8_t b) { (void)i;(void)r;(void)g;(void)b; }
 void hal_led_brightness(uint8_t level) { s_led_bri = level; }
 void hal_led_show(void) { (void)s_led_bri; }
@@ -73,7 +77,11 @@ bool hal_imu(float *ax, float *ay, float *az) {
     *ax = sinf(rad); *ay = 0.0f; *az = cosf(rad);
     return true;
 }
+#if defined(WILIDORO_BOARD_OG)
+bool hal_lux(float *lux) { (void)lux; return false; }   /* no ambient sensor on the OG */
+#else
 bool hal_lux(float *lux) { *lux = s_lux; return true; }
+#endif
 
 /* Fake neighbor: emit one valid beacon frame ~every 4s so the Nearby screen has content. */
 void hal_beacon_tx(const uint8_t wire[BEACON_WIRE_LEN]) { (void)wire; }
@@ -87,6 +95,7 @@ bool hal_beacon_rx(uint8_t wire[BEACON_WIRE_LEN]) {
     return true;
 }
 
+#if !defined(WILIDORO_BOARD_OG)
 /* --- DVI: plain RAM, blitted into a second SDL window ---------------------
    The stride is deliberately WIDER than the width so the simulator exercises
    the same strided path as the device, where the slack holds HSTX commands. */
@@ -129,3 +138,28 @@ void sim_dvi_present(void) {
 }
 
 hal_caps_t hal_caps(void) { hal_caps_t c = { .radio=true,.imu=true,.light=true,.audio=true,.buttons=true,.leds=true,.dvi=true }; return c; }
+
+#else /* WILIDORO_BOARD_OG */
+
+/* No HSTX on the OG's RP2040 -- mirrors hal_og.c exactly. app.c still calls
+   hal_dvi_enable() unconditionally from app_dvi_apply(), so it must exist,
+   but there is nothing for it to do. */
+bool hal_dvi_surface(hal_dvi_surface_t *s) { (void)s; return false; }
+void hal_dvi_enable(bool on) { (void)on; }
+
+/* hal_caps() matches hal_og.c's profile: no light sensor, no IMU wiring in
+   the sim yet, no radio (Plan OG-D), no DVI. Buttons/LEDs/audio are real in
+   the sim, same as the board. */
+hal_caps_t hal_caps(void) {
+    hal_caps_t c = {0};
+    c.buttons = true;
+    c.leds    = true;
+    c.audio   = true;
+    c.imu     = false;
+    c.radio   = false;
+    c.light   = false;
+    c.dvi     = false;
+    return c;
+}
+
+#endif /* WILIDORO_BOARD_OG */

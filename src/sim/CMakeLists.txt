@@ -5,6 +5,13 @@ set(CMAKE_C_STANDARD 11)
 add_compile_definitions(WILIDORO_SIM=1)
 set(LV_CONF_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../config/lv_conf.h CACHE STRING "" FORCE)
 
+# This is a separate CMake project from the root and does NOT inherit the
+# root's WILIDORO_BOARD -- it needs its own option, same default (fw2).
+set(WILIDORO_BOARD "fw2" CACHE STRING "Simulated board: fw2 or og")
+if(WILIDORO_BOARD STREQUAL "og")
+    add_compile_definitions(WILIDORO_BOARD_OG=1)
+endif()
+
 find_package(SDL2 REQUIRED)
 
 set(LV_CONF_BUILD_DISABLE_EXAMPLES ON CACHE BOOL "" FORCE)
@@ -20,7 +27,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/lvgl lvgl_build)
 target_include_directories(lvgl PUBLIC ${SDL2_INCLUDE_DIRS})
 target_link_libraries(lvgl PUBLIC ${SDL2_LIBRARIES})
 
-add_executable(wilidoro_sim
+set(WILIDORO_SIM_SOURCES
     main.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/pomodoro.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/beacon.c
@@ -33,7 +40,6 @@ add_executable(wilidoro_sim
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/timer_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/led_pattern.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../app/sound.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/../app/dvi_view.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/ui.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_timer.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/screen_settings.c
@@ -43,6 +49,12 @@ add_executable(wilidoro_sim
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/theme_arcade.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../ui/theme_flip.c
 )
+# dvi_view.c is FW2-only -- the OG has no HSTX, exactly as in cmake/board_og.cmake.
+if(NOT WILIDORO_BOARD STREQUAL "og")
+    list(APPEND WILIDORO_SIM_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../app/dvi_view.c)
+endif()
+
+add_executable(wilidoro_sim ${WILIDORO_SIM_SOURCES})
 target_include_directories(wilidoro_sim PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../core
     ${CMAKE_CURRENT_SOURCE_DIR}/../hal

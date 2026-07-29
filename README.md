@@ -103,6 +103,19 @@ powershell -File tools/sim.ps1
 
 Needs SDL2 in MSYS2 (`pacman -S mingw-w64-x86_64-SDL2`). Keyboard: `Z X C V B` are the five softkeys, arrows + Enter are the D-pad, `[` / `]` vary the fake ambient light, `-` / `=` tilt the fake board. A second window mirrors the DVI output.
 
+The simulator is a separate CMake project from the root and defaults to the FreeWili 2. Give it `-Board og` to run the OG's 320×240 layout instead, in its own build directory (`build-sim-og`, vs. `build-sim` for the FW2) so one CMake cache never has to hold both boards:
+
+```sh
+powershell -File tools/sim.ps1 -Board og
+```
+
+`Z X C V B` still work, and drive the same five softkey columns the real OG's five physical buttons do — on the OG's Settings screen that is an arrow pad (grey/red move the selection, yellow/blue adjust it, green applies). What the OG simulator does *not* faithfully reproduce:
+
+- **No DVI mirror window.** The OG has no HSTX block, so `sim_dvi_create()`/`sim_dvi_present()` are skipped entirely, same as the real board never running `dvi_view.c`.
+- **7 LEDs, not 16** — `hal_led_count()` returns the OG's real WS2812 chain length.
+- **The capability profile matches `hal_og.c`**: `hal_caps()` reports no light sensor and no radio, same as the real board (`hal_lux()` also returns `false`). IMU and beacon reception stay off pending later plans, exactly as on hardware.
+- **The sim is slightly more capable than the OG hardware in one respect**: LVGL's SDL build always provides a mouse pointer indev, so in OG mode you can click the on-screen `+`/`-` buttons with the mouse in addition to using the `Z X C V B` arrow pad. The real OG has no touchscreen and no pointer device at all — only the arrow pad works there. This is a simulator fidelity gap, not a bug.
+
 ## Architecture
 
 The rule that shapes everything: **the HAL is the only hardware seam**, so the interesting logic is testable on a desktop.
