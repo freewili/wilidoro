@@ -90,12 +90,13 @@ Needs the Pico SDK and ARM GCC under `~/.pico-sdk` (the layout the official VS C
 git clone --recurse-submodules https://github.com/freewili/wilidoro.git
 cd wilidoro
 powershell -File tools/build.ps1          # -> build/wilidoro.uf2
-powershell -File tools/flash.ps1          # program + verify + reset over a CMSIS-DAP probe
 ```
 
-Add `-Clean` to `build.ps1` for a from-scratch build. `tools/rtt.ps1` streams SEGGER RTT diagnostics.
-
-Drag-and-drop also works: hold BOOTSEL, then copy `build/wilidoro.uf2` to the mass-storage device.
+Add `-Clean` to `build.ps1` for a from-scratch build. The FW2 artifact is a
+PSRAM-resident DISPLAY app: install `build/wilidoro.uf2` through the DISPLAY
+app launcher (for example, `fw install-app build/wilidoro.uf2` from a current
+wilibsp checkout). Do not drag it to BOOTSEL or flash it as a DISPLAY firmware
+image. `tools/rtt.ps1` streams SEGGER RTT diagnostics after the app is running.
 
 ### Host tests
 

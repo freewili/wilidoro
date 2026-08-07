@@ -16,9 +16,13 @@ int main(void) {
        25.2 MHz at the cost of ~0.8 % audio pitch (fs -> 16137 Hz) -- safe to
        switch because hal_target.c derives the sample rate from clk_sys at
        runtime rather than hardcoding it. */
-    board_init();
+    /* fw2_psram_app's SRAM bootstrap has already run board_init_psram().
+       Do not reconfigure clocks/QMI while this image executes from PSRAM. */
+    fw2_app_recovery_init();
     st7796_init();
+    agentio_init();
     st7796_fill_screen(0x0000);
+    fw2_app_about_use_lcd();
     lvgl_port_init();
     ft6336_init();
     lvgl_port_register_touch();
@@ -27,10 +31,11 @@ int main(void) {
     lv_timer_handler();       /* first frame */
     /* Report the ACTUAL clock, not BOARD_SYS_CLOCK_KHZ -- that macro is the
        compile-time 250000 default, so it would silently lie if this app ever
-       switched to board_init_clk() (see the note above main's board_init call). */
+       switched to a different inherited board clock. */
     DIAG("wilidoro app up: sys=%u kHz\n", (unsigned)(clock_get_hz(clk_sys) / 1000u));
     for (;;) {
-        hal_pump();           /* drain uartkbd every iteration */
+        fw2_app_recovery_task();
+        hal_pump();           /* AgentIO + non-input hardware service */
         lv_timer_handler();
         sleep_ms(5);
     }

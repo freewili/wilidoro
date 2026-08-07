@@ -220,7 +220,12 @@ void hal_init(void) {
          hstx_dvi_video_w(), hstx_dvi_video_h(), hstx_dvi_video_stride());
 }
 
-void hal_pump(void) { uartkbd_task(); audio_pump(hal_now_ms()); }
+void hal_pump(void) {
+    /* fw2_app_recovery_task() owns keyboard polling so HOME recovery and the
+       PAGE-hold About screen are serviced on every iteration. */
+    agentio_task();
+    audio_pump(hal_now_ms());
+}
 
 uint32_t hal_now_ms(void) { return to_ms_since_boot(get_absolute_time()); }
 

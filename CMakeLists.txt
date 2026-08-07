@@ -13,8 +13,11 @@ if(WILIDORO_BOARD STREQUAL "og")
     set(PICO_STDIO_UART 0 CACHE BOOL "stdio over UART (forced off: UART0 is the link)" FORCE)
 elseif(WILIDORO_BOARD STREQUAL "fw2")
     set(PICO_BOARD freewili2 CACHE STRING "Board type")
-    list(APPEND PICO_BOARD_HEADER_DIRS "${CMAKE_CURRENT_LIST_DIR}/boards")
-    list(APPEND PICO_BOARD_HEADER_DIRS "${CMAKE_CURRENT_LIST_DIR}/wilibsp/bsp/boards")
+    set(PICO_BOARD_HEADER_DIRS "${CMAKE_CURRENT_LIST_DIR}/wilibsp/bsp/boards")
+    # The current BSP includes PIO-USB support; its SDK target must be located
+    # before pico_sdk_init() creates the dependency graph.
+    set(PICO_PIO_USB_PATH "${CMAKE_CURRENT_LIST_DIR}/wilibsp/bsp/third_party/Pico-PIO-USB")
+    option(FW2_AGENTIO "Build the FW2 remote-control/capture harness" ON)
 else()
     message(FATAL_ERROR "WILIDORO_BOARD must be 'fw2' or 'og', got '${WILIDORO_BOARD}'")
 endif()
@@ -22,6 +25,7 @@ endif()
 include(pico_sdk_import.cmake)
 project(wilidoro C CXX ASM)
 set(CMAKE_C_STANDARD 11)
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
 pico_sdk_init()
 
 # LVGL — shared by both boards; lv_conf.h branches on board where it must.

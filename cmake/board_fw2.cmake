@@ -44,5 +44,12 @@ target_link_libraries(wilidoro PRIVATE
 )
 pico_enable_stdio_usb(wilidoro 0)
 pico_enable_stdio_uart(wilidoro 0)
-pico_set_binary_type(wilidoro default)      # XIP from flash (LVGL too big for copy_to_ram)
-pico_add_extra_outputs(wilidoro)
+
+# A DISPLAY app is loaded from /apps/ and must never contain QSPI-flash
+# blocks. The BSP helper emits the validated PSRAM UF2 plus the required app
+# metadata record (also used by the PAGE-hold About screen).
+fw2_psram_app(wilidoro
+    NAME "Wilidoro"
+    VERSION 001
+    DESCRIPTION "Pomodoro timer with themed countdown, LEDs, chimes and tilt pause"
+    REPOSITORY "https://github.com/freewili/wilidoro")
