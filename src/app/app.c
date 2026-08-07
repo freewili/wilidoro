@@ -6,6 +6,13 @@
 #include "screen_settings.h"
 #include "screen_nearby.h"
 #include "dimming.h"
+
+/* Ambient auto-dim is useful for a desk timer, but it makes the public demo
+ * look like a rail brownout on a dark bench. Keep full brightness by default;
+ * products that want adaptive brightness can opt in at compile time. */
+#ifndef WILIDORO_AUTO_DIM
+#define WILIDORO_AUTO_DIM 0
+#endif
 #include "led_pattern.h"
 #include "timer_view.h"
 #if !defined(WILIDORO_BOARD_OG)
@@ -152,6 +159,7 @@ static void sensor_cb(lv_timer_t *t) {
     }
 
     /* auto-dim: poll lux at ~2 Hz through the core dimming curve */
+#if WILIDORO_AUTO_DIM
     if ((int32_t)(now - s_next_lux) >= 0) {
         float lux;
         if (hal_lux(&lux)) {
@@ -161,6 +169,7 @@ static void sensor_cb(lv_timer_t *t) {
         }
         s_next_lux = now + 500;
     }
+#endif
 }
 
 static void tick_cb(lv_timer_t *t) {
