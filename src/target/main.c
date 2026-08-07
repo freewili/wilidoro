@@ -16,21 +16,37 @@ int main(void) {
        25.2 MHz at the cost of ~0.8 % audio pitch (fs -> 16137 Hz) -- safe to
        switch because hal_target.c derives the sample rate from clk_sys at
        runtime rather than hardcoding it. */
+    /* fw2_psram_app's SRAM bootstrap has already run board_init_psram().
+       board_init() recognizes that inherited state and only completes normal
+       peripheral ownership; it must still precede recovery and every driver. */
+    DIAG("wilidoro: main\n");
     board_init();
+    DIAG("wilidoro: board ready\n");
+    fw2_app_recovery_init();
+    DIAG("wilidoro: recovery ready\n");
     st7796_init();
+    DIAG("wilidoro: lcd ready\n");
+    agentio_init();
+    DIAG("wilidoro: agentio ready\n");
     st7796_fill_screen(0x0000);
+    fw2_app_about_use_lcd();
     lvgl_port_init();
+    DIAG("wilidoro: lvgl ready\n");
     ft6336_init();
     lvgl_port_register_touch();
+    DIAG("wilidoro: touch ready\n");
     hal_init();               /* uartkbd + ws2812 + bl_pwm */
+    DIAG("wilidoro: hal ready\n");
     app_init();               /* builds screens, starts tick */
+    DIAG("wilidoro: app ready\n");
     lv_timer_handler();       /* first frame */
     /* Report the ACTUAL clock, not BOARD_SYS_CLOCK_KHZ -- that macro is the
        compile-time 250000 default, so it would silently lie if this app ever
-       switched to board_init_clk() (see the note above main's board_init call). */
+       switched to a different inherited board clock. */
     DIAG("wilidoro app up: sys=%u kHz\n", (unsigned)(clock_get_hz(clk_sys) / 1000u));
     for (;;) {
-        hal_pump();           /* drain uartkbd every iteration */
+        fw2_app_recovery_task();
+        hal_pump();           /* AgentIO + non-input hardware service */
         lv_timer_handler();
         sleep_ms(5);
     }

@@ -172,7 +172,9 @@ static void radio_listen(void) {
 }
 
 void hal_init(void) {
-    uartkbd_init();
+    /* fw2_app_recovery_init() owns keyboard initialization and polling.
+     * Initializing it again leaks the first endless DMA channel and leaves
+     * two channels racing to write the same receive ring. */
     ws2812_init(pio1, (uint)pio_claim_unused_sm(pio1, true), PIN_LED_DATA);
     ws2812_set_brightness(40);
     ws2812_clear();
@@ -220,7 +222,12 @@ void hal_init(void) {
          hstx_dvi_video_w(), hstx_dvi_video_h(), hstx_dvi_video_stride());
 }
 
-void hal_pump(void) { uartkbd_task(); audio_pump(hal_now_ms()); }
+void hal_pump(void) {
+    /* fw2_app_recovery_task() owns keyboard polling so HOME recovery and the
+       PAGE-hold About screen are serviced on every iteration. */
+    agentio_task();
+    audio_pump(hal_now_ms());
+}
 
 uint32_t hal_now_ms(void) { return to_ms_since_boot(get_absolute_time()); }
 

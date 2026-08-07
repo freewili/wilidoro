@@ -5,10 +5,9 @@
 
 #define DISP_HOR 480
 #define DISP_VER 320
-#define BUF_LINES 40
+#define BUF_LINES 30
 #define BUF_PX (DISP_HOR * BUF_LINES)
 static lv_color_t s_buf1[BUF_PX];
-static lv_color_t s_buf2[BUF_PX];
 
 static uint32_t tick_get_cb(void) { return to_ms_since_boot(get_absolute_time()); }
 
@@ -36,7 +35,11 @@ void lvgl_port_init(void) {
     lv_tick_set_cb(tick_get_cb);
     lv_display_t *disp = lv_display_create(DISP_HOR, DISP_VER);
     lv_display_set_flush_cb(disp, flush_cb);
-    lv_display_set_buffers(disp, s_buf1, s_buf2, sizeof(s_buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
+    /* The PSRAM app's initial stack is fixed at 0x20070000. A second draw
+       buffer pushed static SRAM beyond that address, corrupting startup
+       before main could reach the display. Flushes are synchronous, so one
+       30-line partial buffer is sufficient and leaves a real stack margin. */
+    lv_display_set_buffers(disp, s_buf1, NULL, sizeof(s_buf1), LV_DISPLAY_RENDER_MODE_PARTIAL);
 }
 
 void lvgl_port_register_touch(void) {

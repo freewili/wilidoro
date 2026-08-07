@@ -44,5 +44,22 @@ target_link_libraries(wilidoro PRIVATE
 )
 pico_enable_stdio_usb(wilidoro 0)
 pico_enable_stdio_uart(wilidoro 0)
-pico_set_binary_type(wilidoro default)      # XIP from flash (LVGL too big for copy_to_ram)
-pico_add_extra_outputs(wilidoro)
+
+# A DISPLAY app is loaded from /apps/ and must never contain QSPI-flash
+# blocks. The BSP helper emits the validated PSRAM UF2 plus the required app
+# metadata record (also used by the PAGE-hold About screen).
+fw2_psram_app(wilidoro
+    POWER_ZONES SENSORS DISPLAY AUDIO SUBGHZ RGB_LEDS
+    NAME "Wilidoro"
+    VERSION 001
+    DESCRIPTION "Pomodoro timer with themed countdown, LEDs, chimes and tilt pause"
+    REPOSITORY "https://github.com/freewili/wilidoro")
+
+# The generic BSP check proves the UF2 only targets PSRAM. Keep the app's
+# SRAM bootstrap contract checked too: static storage must not consume the
+# fixed initial stack at 0x20070000.
+add_custom_command(TARGET wilidoro POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/verify_psram_layout.py
+            $<TARGET_FILE:wilidoro> ${CMAKE_OBJDUMP}
+            $<TARGET_FILE_DIR:wilidoro>/wilidoro.uf2
+    VERBATIM)
