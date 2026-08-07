@@ -53,3 +53,12 @@ fw2_psram_app(wilidoro
     VERSION 001
     DESCRIPTION "Pomodoro timer with themed countdown, LEDs, chimes and tilt pause"
     REPOSITORY "https://github.com/freewili/wilidoro")
+
+# The generic BSP check proves the UF2 only targets PSRAM. Keep the app's
+# SRAM bootstrap contract checked too: static storage must not consume the
+# fixed initial stack at 0x20070000.
+add_custom_command(TARGET wilidoro POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/verify_psram_layout.py
+            $<TARGET_FILE:wilidoro> ${CMAKE_OBJDUMP}
+            $<TARGET_FILE_DIR:wilidoro>/wilidoro.uf2
+    VERBATIM)
