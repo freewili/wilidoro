@@ -49,6 +49,7 @@ pico_enable_stdio_uart(wilidoro 0)
 # blocks. The BSP helper emits the validated PSRAM UF2 plus the required app
 # metadata record (also used by the PAGE-hold About screen).
 fw2_psram_app(wilidoro
+    POWER_ZONES SENSORS DISPLAY AUDIO SUBGHZ RGB_LEDS
     NAME "Wilidoro"
     VERSION 001
     DESCRIPTION "Pomodoro timer with themed countdown, LEDs, chimes and tilt pause"
